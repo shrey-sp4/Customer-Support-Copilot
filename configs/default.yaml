@@ -1,0 +1,39 @@
+mode: default
+seed: 42
+device: auto
+
+max_train_samples: 500
+max_eval_samples: 200
+max_kb_chunks: 2000
+
+retriever_epochs: 1
+reranker_epochs: 1
+triage_epochs: 2
+preference_epochs: 1
+generator_epochs: 0
+
+batch_size: 8
+reranker_batch_size: 4
+triage_batch_size: 8
+gradient_accumulation_steps: 2
+
+fp16: true
+
+top_k_retrieval: 15
+top_k_rerank: 5
+top_k_domains: 2
+
+mu_boundary: 0.15
+lambda_boundary: 0.6
+
+tau_domain: 0.35
+tau_chunk: 0.40
+
+retriever_model: sentence-transformers/all-MiniLM-L6-v2
+reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+triage_model: distilbert-base-uncased
+generator_model: google/flan-t5-small
+
+output_dir: outputs
+data_dir: data/processed
+index_dir: data/indexes

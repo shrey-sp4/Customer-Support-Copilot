@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+outputs/
+*.log
+.env
+.ipynb_checkpoints/
+node_modules/
+dist/
+build/

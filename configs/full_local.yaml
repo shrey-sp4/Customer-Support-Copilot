@@ -1,0 +1,48 @@
+mode: full_local
+seed: 42
+device: auto
+
+# Sample limits (null = use all)
+max_train_samples: null
+max_eval_samples: null
+max_kb_chunks: null
+
+# Training epochs
+retriever_epochs: 2
+reranker_epochs: 1
+triage_epochs: 3
+preference_epochs: 2
+generator_epochs: 0
+
+# Batch sizes
+batch_size: 8
+reranker_batch_size: 4
+triage_batch_size: 8
+gradient_accumulation_steps: 4
+
+# Precision
+fp16: true
+
+# Retrieval
+top_k_retrieval: 20
+top_k_rerank: 5
+top_k_domains: 2
+
+# Triage loss
+mu_boundary: 0.15
+lambda_boundary: 0.6
+
+# Domain routing thresholds
+tau_domain: 0.35
+tau_chunk: 0.40
+
+# Model paths (use HF hub IDs)
+retriever_model: sentence-transformers/all-MiniLM-L6-v2
+reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+triage_model: distilbert-base-uncased
+generator_model: google/flan-t5-small
+
+# Output directories
+output_dir: outputs
+data_dir: data/processed
+index_dir: data/indexes

@@ -1,0 +1,41 @@
+# Core ML
+torch>=2.0.0
+transformers>=4.35.0
+sentence-transformers>=2.2.2
+datasets==2.19.1
+peft>=0.6.0
+accelerate>=0.24.0
+
+# FAISS (CPU build — GPU build optional, comment out cpu if using GPU build)
+faiss-cpu>=1.7.4
+
+# NLP utilities
+scikit-learn>=1.3.0
+numpy>=1.24.0
+scipy>=1.11.0
+nltk>=3.8.1
+sentencepiece>=0.1.99
+
+# Config and CLI
+pyyaml>=6.0
+tqdm>=4.66.0
+rich>=13.5.0
+
+# Evaluation
+rouge-score>=0.1.2
+evaluate>=0.4.0
+
+# Serving (optional FastAPI)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.4.0
+
+# Data / IO
+jsonlines>=4.0.0
+pandas>=2.0.0
+
+# Logging
+loguru>=0.7.0
+
+# Reproducibility
+einops>=0.7.0
