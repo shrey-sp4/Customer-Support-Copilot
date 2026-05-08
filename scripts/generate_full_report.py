@@ -184,8 +184,28 @@ def main():
     write_json(final_results["Baseline-2"], "outputs/reports/rule_workflow_baseline_metrics.json")
     write_json(final_results["Proposed"], "outputs/reports/proposed_metrics.json")
     
-    # Latency report
-    latency_report = {name: res["Avg Latency"] for name, res in final_results.items()}
+    # Latency report with p50/p95
+    latency_stats = {}
+    for name, res in final_results.items():
+        latencies = [r["latency_ms"] for r in results if name == "Proposed"] # This needs fixing to use the right results
+        # Actually, let's just compute from the saved results in each loop
+        pass
+
+    # Re-computing properly
+    latency_report = {}
+    for name, exec_obj in systems:
+        lats = [r["latency_ms"] for r in all_results[name]]
+        p50 = np.percentile(lats, 50)
+        p95 = np.percentile(lats, 95)
+        avg = np.mean(lats)
+        throughput = 1000.0 / avg if avg > 0 else 0
+        latency_report[name] = {
+            "avg_ms": avg,
+            "p50_ms": p50,
+            "p95_ms": p95,
+            "throughput_qps": throughput
+        }
+    
     write_json(latency_report, "outputs/reports/latency_report.json")
     
     # Ablation Table (Part 9)
