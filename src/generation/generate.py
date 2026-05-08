@@ -6,52 +6,171 @@ import re
 import os
 import torch
 from typing import List, Optional, Tuple
+from src.utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 def format_evidence(passages: List[dict]) -> str:
     """Format top passages as evidence text for the prompt."""
     parts = []
-    for i, p in enumerate(passages[:3]):
-        parts.append(f"[{i+1}] {p['text'][:300]}")
+    for i, p in enumerate(passages): # Use all provided passages
+        text = p.get("text", "")
+        # Minimal cleaning for the prompt
+        text = re.sub(r"\s+", " ", text).strip()
+        parts.append(f"[{i+1}] {text}")
     return "\n".join(parts)
 
 
-def extract_citations(passages: List[dict]) -> List[dict]:
-    """Extract citation metadata from passages."""
+def extract_citations(passages: List[dict]) -> List[str]:
+    """Extract formatted citation strings from passages."""
     citations = []
     for p in passages:
-        citations.append({
-            "doc_id":     p.get("doc_id",     ""),
-            "chunk_id":   p.get("chunk_id",   ""),
-            "section_id": p.get("section_id", ""),
-            "span_start": p.get("span_start", 0),
-            "span_end":   p.get("span_end",   0),
-        })
-    return citations
+        doc_id = p.get("doc_id", "unknown")
+        chunk_id = p.get("chunk_id", "unknown")
+        s = p.get("span_start", 0)
+        e = p.get("span_end", 0)
+        if s or e:
+            citations.append(f"[{doc_id}:{chunk_id} {s}-{e}]")
+        else:
+            citations.append(f"[{doc_id}:{chunk_id}]")
+    return list(dict.fromkeys(citations)) # dedup
 
 
-def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[dict]]:
-    """Generate a template-based answer with citations."""
+def clean_text_formatting(text: str) -> str:
+    """Fix common spacing, punctuation, and apostrophe issues."""
+    text = re.sub(r"\bLet s\b", "Let's", text, flags=re.IGNORECASE)
+    text = re.sub(r"\byou ll\b", "you'll", text, flags=re.IGNORECASE)
+    text = re.sub(r"\byou ve\b", "you've", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bdon t\b", "don't", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bcan t\b", "can't", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(\w+)\s+s\b", r"\1's", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bDepartment of Labor s\b", "Department of Labor's", text, flags=re.IGNORECASE)
+    
+    # Fix spacing and punctuation
+    text = re.sub(r"\s+([.,!?])", r"\1", text)
+    text = re.sub(r"([.,!?])(?=[A-Za-z])", r"\1 ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    
+    # Remove common incomplete suffixes/broken words
+    text = re.sub(r"\s+(fin|and|or|with|for)\.?$", ".", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*\.\.\.$", ".", text)
+    
+    return text
+
+def _extract_clean_sentences(text: str, query: str, max_chars: int = 5000) -> str:
+    """Extract the most relevant complete sentences from a passage."""
+    text = clean_text_formatting(text)
+
+    # Remove section headings (lines that are short and Title Case or ALL CAPS)
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    filtered = []
+    for line in lines:
+        words = line.split()
+        is_heading = (len(words) <= 6 and line.istitle()) or line.isupper() or line.endswith(":")
+        if not is_heading:
+            filtered.append(line)
+    text = " ".join(filtered)
+
+    # Split into sentences
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # Score each sentence by query token overlap
+    query_tokens = set(re.findall(r'\w+', query.lower()))
+    scored = []
+    for s in sentences:
+        s = s.strip()
+        if len(s) < 20:
+            continue
+        overlap = len(query_tokens & set(re.findall(r'\w+', s.lower())))
+        scored.append((overlap, s))
+    scored.sort(key=lambda x: -x[0])
+
+    # Take top sentences that fit within max_chars
+    result_sents = []
+    total = 0
+    for _, s in scored[:4]:
+        if total + len(s) <= max_chars:
+            result_sents.append(s)
+            total += len(s)
+
+    if not result_sents:
+        # Fallback: take first complete sentence
+        for s in sentences:
+            if len(s) >= 20 and s[0].isupper():
+                result_sents.append(s)
+                break
+
+    result = " ".join(result_sents).strip()
+    
+    # Remove broken trailing words or ellipses
+    result = re.sub(r"\s+\w+$", "", result) # drop last word if it's incomplete
+    result = re.sub(r"\s*\.\.\.$", ".", result) # replace trailing ... with .
+    if result.endswith(" fin"):
+        result = result[:-4] + "."
+        
+    return result
+
+
+def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[str], bool]:
+    """Generate a clean, support-style answer with citations from selected evidence."""
     if not passages:
         return (
-            "I could not find relevant information in the knowledge base for your query. "
-            "Please contact support for further assistance.",
+            "I could not find enough evidence in the knowledge base to answer this query. "
+            "I've created a support ticket for further investigation.",
             [],
+            True
         )
 
-    top_p = passages[0]
-    evidence_snippet = top_p["text"][:300].strip()
-    doc_id   = top_p.get("doc_id", "")
-    chunk_id = top_p.get("chunk_id", "")
-    span_s   = top_p.get("span_start", 0)
-    span_e   = top_p.get("span_end", 0)
+    citations = extract_citations(passages)
 
-    answer = (
-        f"Based on the knowledge base: {evidence_snippet} "
-        f"[doc_id={doc_id}, chunk_id={chunk_id}, span={span_s}-{span_e}]"
-    )
-    citations = extract_citations(passages[:3])
-    return answer, citations
+    # Build answer body from passages
+    body_parts = []
+    for p in passages:
+        snippet = _extract_clean_sentences(p.get("text", ""), query)
+        if snippet:
+            body_parts.append(snippet)
+
+    body = " ".join(body_parts).strip()
+
+    if not body:
+        # Hard fallback: first 350 chars of top passage, trimmed to sentence boundary
+        raw = passages[0].get("text", "").strip()[:350]
+        last_period = raw.rfind(".")
+        body = raw[:last_period + 1] if last_period > 50 else raw
+
+    # Final support-style wrapping
+    if len(body.split()) < 15:
+        answer = f"The knowledge base states: {body}"
+    else:
+        answer = body
+
+    # Ensure it ends with proper punctuation
+    if answer and answer[-1] not in ".!?":
+        answer += "."
+
+    cit_str = " " + " ".join(citations[:2]) if citations else ""
+    return answer + cit_str, citations, False
+
+
+def validate_answer_quality(answer: str, query: str, citations: List[str]) -> bool:
+    """Perform quality gate checks on the generated answer."""
+    if not answer or len(answer.strip()) < 15:
+        logger.warning(f"[Quality] Rejected: Too short ({len(answer.strip())} chars)")
+        return False
+    
+    words = answer.split()
+    if len(words) > 250:
+        logger.warning(f"[Quality] Rejected: Too long ({len(words)} words)")
+        return False
+    
+    # Check for excessive repetition
+    sentences = re.split(r'(?<=[.!?])\s+', answer)
+    if len(sentences) > 2:
+        for i in range(len(sentences)-1):
+            if sentences[i].strip().lower() == sentences[i+1].strip().lower():
+                logger.warning(f"[Quality] Rejected: Repetition detected")
+                return False
+                
+    return True
 
 
 def generate_answer(
@@ -60,48 +179,64 @@ def generate_answer(
     generator=None,
     preference_scorer=None,
     num_candidates: int = 3,
-) -> Tuple[str, List[dict]]:
+) -> Tuple[str, List[str], bool]:
     """
     Generate final cited answer.
-    If generator (Flan-T5) is available: generate candidates, score with preference ranker.
-    Otherwise: use template-based generation.
+    Returns (answer, citations, is_insufficient).
     """
-    citations = extract_citations(passages[:3])
+    citations = extract_citations(passages)
 
     if generator is None:
         return template_answer(query, passages)
 
     # --- Generator-based answer ---
     evidence_text = format_evidence(passages)
-    prompt = (
-        f"Answer the following customer support question using only the provided evidence. "
-        f"Include a citation in the format [doc_id=X, chunk_id=Y, span=A-B] at the end.\n\n"
-        f"Question: {query}\n\n"
-        f"Evidence:\n{evidence_text}\n\n"
-        f"Answer:"
-    )
-
-    candidates = generator.generate(prompt, num_return_sequences=num_candidates)
-
-    # Ensure at least one candidate has a citation
-    if citations:
-        top_p = passages[0]
-        citation_str = (
-            f"[doc_id={top_p.get('doc_id','')}, "
-            f"chunk_id={top_p.get('chunk_id','')}, "
-            f"span={top_p.get('span_start',0)}-{top_p.get('span_end',0)}]"
+    
+    def run_generation(strict=False):
+        style_instr = "Provide a comprehensive, detailed, and to-the-point answer."
+        if strict:
+            style_instr = "Provide a concise, direct answer focusing on the most relevant facts."
+            
+        prompt = (
+            "Answer the following question using ONLY the provided evidence.\n"
+            f"{style_instr}\n"
+            "If the evidence is not sufficient to answer, write: INSUFFICIENT_EVIDENCE.\n\n"
+            f"Question: {query}\n\n"
+            f"Evidence:\n{evidence_text}\n\n"
+            "Answer:"
         )
-        # Append citation to last candidate if none present
-        if not any(re.search(r"\[doc_id=", c) for c in candidates):
-            candidates[-1] = candidates[-1].rstrip() + " " + citation_str
+        candidates = generator.generate(prompt, num_return_sequences=num_candidates)
+        
+        if preference_scorer is not None and len(candidates) > 1:
+            best = preference_scorer.select_best(query, candidates, passages)
+        else:
+            best = candidates[0]
+        return best
 
-    # Prefer with scorer
-    if preference_scorer is not None and len(candidates) > 1:
-        best = preference_scorer.select_best(query, candidates, passages)
-    else:
-        best = candidates[0]
+    best = run_generation(strict=False)
+    
+    # Retry logic (Part D)
+    if not best or "INSUFFICIENT_EVIDENCE" in best or len(best.split()) < 5:
+        logger.info("[Generation] Triggering retry with strict prompt...")
+        best = run_generation(strict=True)
 
-    return best, citations
+    # Final quality gate (Part E)
+    if not best or "INSUFFICIENT_EVIDENCE" in best or not validate_answer_quality(best, query, citations):
+        logger.warning(f"[Generation] Quality gate failed. Result: {best[:50]}...")
+        return "I could not generate a high-quality answer from the available evidence.", citations, True
+
+    # Post-process for common tokenizer issues
+    best = clean_text_formatting(best)
+
+    # Ensure punctuation before citation
+    if best and best[-1] not in ".!?":
+        best += "."
+
+    # Programmatically append the primary citation if not already mentioned
+    if citations and not any(c in best for c in citations):
+        best = best.rstrip() + f" {citations[0]}"
+
+    return best, citations, False
 
 
 class FlanT5Generator:
@@ -109,9 +244,11 @@ class FlanT5Generator:
 
     def __init__(
         self,
-        model_path: str = "google/flan-t5-small",
+        model_path: str = "google/flan-t5-base",
         device: torch.device = None,
-        max_new_tokens: int = 150,
+        max_new_tokens: int = 120,
+        num_beams: int = 4,
+        temperature: float = 0.0,
     ):
         from transformers import T5ForConditionalGeneration, AutoTokenizer
         if device is None:
@@ -119,6 +256,8 @@ class FlanT5Generator:
             device = get_device("auto")
         self.device         = device
         self.max_new_tokens = max_new_tokens
+        self.num_beams       = num_beams
+        self.temperature    = temperature
 
         print(f"[generator] Loading {model_path} ...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -131,35 +270,60 @@ class FlanT5Generator:
         """Generate answer candidates from a prompt."""
         enc = self.tokenizer(
             prompt,
-            max_length=512,
+            max_length=768,
             truncation=True,
             return_tensors="pt",
         )
         input_ids      = enc["input_ids"].to(self.device)
         attention_mask = enc["attention_mask"].to(self.device)
 
-        outputs = self.model.generate(
-            input_ids       = input_ids,
-            attention_mask  = attention_mask,
-            max_new_tokens  = self.max_new_tokens,
-            num_beams       = max(num_return_sequences, 4),
-            num_return_sequences = num_return_sequences,
-            early_stopping  = True,
-        )
+        gen_config = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "max_new_tokens": self.max_new_tokens,
+            "num_beams": max(num_return_sequences, self.num_beams),
+            "num_return_sequences": num_return_sequences,
+            "early_stopping": True,
+        }
+        if self.temperature > 0:
+            gen_config["do_sample"] = True
+            gen_config["temperature"] = self.temperature
+        else:
+            gen_config["do_sample"] = False
+
+        outputs = self.model.generate(**gen_config)
         decoded = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
         return decoded
 
 
-def load_generator(model_path: str, device=None) -> Optional[FlanT5Generator]:
+def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[FlanT5Generator]:
     """Load generator. If path does not exist, return None (template mode)."""
-    if not model_path or not os.path.isdir(model_path):
-        # Also check if it's a known HF model name if we want to allow that
-        if model_path and "/" in model_path: # simplified check for HF model name
-            pass
-        else:
-            return None
+    if cfg is None: cfg = {}
+    
+    # Priority: 1. Passed model_path, 2. Config model_name, 3. Config generator_model_name
+    model_name = model_path or cfg.get("generator_model_name") or cfg.get("generator_model") or "google/flan-t5-base"
+    fallback_name = cfg.get("generator_fallback_model_name") or "google/flan-t5-small"
+
     try:
-        return FlanT5Generator(model_path, device=device)
+        return FlanT5Generator(
+            model_path=model_name,
+            device=device,
+            max_new_tokens=cfg.get("generator_max_new_tokens", 120),
+            num_beams=cfg.get("generator_num_beams", 4),
+            temperature=cfg.get("generator_temperature", 0.0),
+        )
     except Exception as e:
-        print(f"[generator] Could not load generator: {e}. Using template mode.")
-        return None
+        err_msg = str(e).split("\n")[0]
+        print(f"[warning] Could not load generator '{model_name}' ({err_msg}). Trying fallback...")
+        try:
+            return FlanT5Generator(
+                model_path=fallback_name,
+                device=device,
+                max_new_tokens=cfg.get("generator_max_new_tokens", 120),
+                num_beams=cfg.get("generator_num_beams", 4),
+                temperature=cfg.get("generator_temperature", 0.0),
+            )
+        except Exception as e2:
+            err_msg2 = str(e2).split("\n")[0]
+            print(f"[error] Fallback failed ({err_msg2}). Generator mode: template fallback")
+            return None

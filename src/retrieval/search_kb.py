@@ -30,9 +30,9 @@ class KBSearcher:
         self,
         query: str,
         top_k: int = 10,
-        domain: Optional[str] = None,
+        domain: Optional[str | List[str]] = None,
     ) -> List[dict]:
-        """Search KB and return top-k passages (optionally filtered by domain)."""
+        """Search KB and return top-k passages (optionally filtered by domain(s))."""
         q_emb = self.encoder.encode(
             [query],
             convert_to_numpy=True,
@@ -41,10 +41,12 @@ class KBSearcher:
         )
 
         # Retrieve more than top_k to allow domain filtering
-        search_k = min(top_k * 4, self.index.ntotal) if domain else top_k
+        search_k = min(top_k * 10, self.index.ntotal) if domain else top_k
         scores, indices = self.index.search(q_emb.astype(np.float32), search_k)
 
         results = []
+        domains_to_filter = [domain] if isinstance(domain, str) else domain
+        
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or idx >= len(self.chunk_ids):
                 continue
@@ -52,8 +54,10 @@ class KBSearcher:
             chunk = self.chunk_by_id.get(cid)
             if chunk is None:
                 continue
-            if domain and chunk.get("domain") != domain:
+            
+            if domains_to_filter and chunk.get("domain") not in domains_to_filter:
                 continue
+                
             results.append({
                 "doc_id":     chunk.get("doc_id",     ""),
                 "chunk_id":   chunk.get("chunk_id",   ""),

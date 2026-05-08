@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.config import load_config
 from src.utils.seed import set_seed
 from src.utils.logging import get_logger
+from src.utils.io import ensure_dir, read_jsonl, write_json
+from sentence_transformers import SentenceTransformer
 
 logger = get_logger(__name__)
 
@@ -39,18 +41,16 @@ def main():
     output_dir = cfg.get("output_dir", "outputs")
     rep_dir    = os.path.join(output_dir, "reports")
     
-    from src.utils.io import ensure_dir, read_jsonl, write_json
     ensure_dir(rep_dir)
 
     # 1. Load components
-    from sentence_transformers import SentenceTransformer
     from src.retrieval.search_kb import load_searcher
     from src.routing.router import load_router
     from src.triage.predict import load_predictor
     from src.reranking.rerank import load_reranker
     from src.generation.generate import load_generator
     from src.preference.score_candidates import load_preference_scorer
-    from src.tools.executor import ToolExecutor, BaselineExecutor
+    from src.tools.executor import ToolExecutor, BaselineExecutor, RuleWorkflowExecutor
 
     logger.info("Loading components for evaluation...")
     
@@ -74,48 +74,52 @@ def main():
     
     gen_path   = os.path.join(output_dir, "generator")
     if not os.path.isdir(gen_path):
-        gen_path = None if cfg.get("generator_epochs", 0) == 0 else cfg.get("generator_model", "google/flan-t5-small")
-    generator  = load_generator(gen_path, device=device)
+        gen_path = None
+    generator  = load_generator(gen_path, device=device, cfg=cfg)
 
     # Chunk by ID for GetPolicy
     kb_chunks = read_jsonl(os.path.join(data_dir, "kb_chunks.jsonl"))
     chunk_by_id = {ch["chunk_id"]: ch for ch in kb_chunks}
 
     baseline_executor = BaselineExecutor(encoder, searcher, reranker, generator, cfg)
+    rule_executor     = RuleWorkflowExecutor(encoder, searcher, router, reranker, generator, cfg)
     proposed_executor = ToolExecutor(
         encoder, searcher, router, triage, reranker, generator, pref, chunk_by_id, cfg
     )
 
-    # 2. Load eval data
-    eval_set = read_jsonl(os.path.join(data_dir, "eval_set.jsonl"))
-    triage_trn = read_jsonl(os.path.join(data_dir, "triage_train.jsonl"))
-    # Include some REJECT/TICKET examples in eval
-    n_eval = cfg.get("max_eval_samples")
-    if n_eval:
-        eval_set = eval_set[:n_eval]
-        extra_count = max(10, n_eval // 5)
-    else:
-        # If full eval, add a reasonable number of triage examples (e.g. 100)
-        extra_count = 100
-    
-    extra = triage_trn[:extra_count]
-    eval_set.extend(extra)
+    # 2. Load eval data (Balanced set: 30 ANSWER, 30 TICKET, 30 REJECT)
+    eval_set = read_jsonl(os.path.join(data_dir, "balanced_eval.jsonl"))
         
     # 3. Run E2E
     from src.evaluation.evaluate_end_to_end import run_e2e_eval
     import pandas as pd
 
-    logger.info(f"Evaluating Baseline on {len(eval_set)} samples...")
-    base_m, base_res = run_e2e_eval(baseline_executor, eval_set, "Baseline")
+    logger.info(f"Evaluating Baseline-1 (Simple RAG) on {len(eval_set)} samples...")
+    base_m, base_res = run_e2e_eval(baseline_executor, eval_set, "Baseline-1")
     
-    logger.info(f"Evaluating Proposed on {len(eval_set)} samples...")
+    logger.info(f"Evaluating Baseline-2 (Rule Workflow) on {len(eval_set)} samples...")
+    rule_m, rule_res = run_e2e_eval(rule_executor, eval_set, "Baseline-2")
+
+    logger.info(f"Evaluating Proposed (Cluster Gated) on {len(eval_set)} samples...")
     prop_m, prop_res = run_e2e_eval(proposed_executor, eval_set, "Proposed")
 
     # Metrics table
     logger.info("Creating summary table...")
     import csv
-    rows = [base_m, prop_m]
-    keys = ["label", "EvidenceHit@5", "CitationPrecision", "TriageAccuracy", "AvgLatencyMs", "REE@5"]
+    
+    # Save individual JSONs
+    write_json(base_m, os.path.join(rep_dir, "baseline_metrics.json"))
+    write_json(rule_m, os.path.join(rep_dir, "rule_workflow_baseline_metrics.json"))
+    write_json(prop_m, os.path.join(rep_dir, "proposed_metrics.json"))
+
+    # Print label distribution
+    logger.info(f"Label Distribution: {base_m.get('LabelDistGold')}")
+
+    rows = [base_m, rule_m, prop_m]
+    keys = [
+        "label", "EvidenceHit@5", "CitationDocPrecision", "TriageAccuracy", "MacroF1", "WeightedF1",
+        "AvgLatencyMs", "AvgClustersSearched", "AvgFractionKBScanned", "REE@5"
+    ]
     
     csv_path = os.path.join(rep_dir, "ablation_metrics.csv")
     logger.info(f"Writing to {csv_path}...")
@@ -125,10 +129,13 @@ def main():
         writer.writerows(rows)
     
     logger.info("\n--- Results ---")
-    print("label | EvidenceHit@5 | CitationPrecision | TriageAccuracy | AvgLatencyMs | REE@5")
-    print("-" * 80)
+    header = "label      | EvHit@5 | CitDocPrec | TriAcc | MacroF1 | LatMs | FracKB | REE@5"
+    print(header)
+    print("-" * len(header))
     for r in rows:
-        print(f"{r.get('label'):<10} | {r.get('EvidenceHit@5',0):.3f} | {r.get('CitationPrecision',0):.3f} | {r.get('TriageAccuracy',0):.3f} | {r.get('AvgLatencyMs',0):.1f} | {r.get('REE@5',0):.3f}")
+        print(f"{r.get('label'):<10} | {r.get('EvidenceHit@5',0):.3f} | {r.get('CitationDocPrecision',0):.3f} | "
+              f"{r.get('TriageAccuracy',0):.3f} | {r.get('MacroF1',0):.3f} | {r.get('AvgLatencyMs',0):.1f} | "
+              f"{r.get('AvgFractionKBScanned',0):.3f} | {r.get('REE@5',0):.3f}")
 
     logger.info("Evaluation complete.")
 

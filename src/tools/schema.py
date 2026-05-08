@@ -21,13 +21,14 @@ class DomainResult:
 class RouteDomainResult:
     domains: List[DomainResult]
     route_confidence: float
+    matched_kws_by_domain: dict = field(default_factory=dict)
 
 
 @dataclass
 class SearchKBArgs:
     query: str
     top_k: int = 5
-    domain: Optional[str] = None
+    domain: Optional[str | List[str]] = None
 
 
 @dataclass

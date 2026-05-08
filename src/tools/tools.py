@@ -31,7 +31,7 @@ def route_domain(
         DomainResult(
             domain=dr["domain"],
             centroid_similarity=dr["centroid_similarity"],
-            centroid_distance=dr["centroid_distance"],
+            centroid_distance=float(1.0 - dr["centroid_similarity"]),
             matched_keywords=dr.get("matched_keywords", []),
         )
         for dr in result.get("domain_results", [])
@@ -41,13 +41,15 @@ def route_domain(
         "args": {"query": query, "top_k_domains": top_k_domains},
         "result": asdict(RouteDomainResult(
             domains=domains,
-            route_confidence=result.get("route_confidence", 0.0),
+            route_confidence=result.get("top_score", 0.0),
+            matched_kws_by_domain=result.get("matched_kws_by_domain", {}),
         )),
         "gate_result":      result.get("gate_result", "pass"),
         "top_domain":       result.get("top_domain"),
         "top_centroid_sim": result.get("top_centroid_sim", 0.0),
-        "centroid_margin":  result.get("centroid_margin", 0.0),
+        "top_score":        result.get("top_score", 0.0),
         "decision":         result.get("decision", "route"),
+        "support_keywords": result.get("support_keywords", []),
     }
 
 

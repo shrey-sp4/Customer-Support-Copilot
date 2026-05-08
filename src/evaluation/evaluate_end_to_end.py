@@ -14,7 +14,9 @@ from src.evaluation.metrics import (
     compute_routing_metrics,
     compute_latency_metrics,
     compute_ree_at_k,
+    compute_cluster_metrics,
 )
+from src.evaluation.quality import compute_answer_quality_metrics
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +37,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
     triage_logits    = []
     routing_results  = []
     retrieval_results = []
+    cluster_results  = []
 
     for i, sample in enumerate(eval_set):
         try:
@@ -58,7 +61,9 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
                 )
             )
 
-            # Extract retrieved chunk IDs from tool trace
+            # Extract retrieved chunk IDs from tool trace.
+            # NOTE: For Baselines, the executor explicitly adds a 'SearchKB' tool trace 
+            # with retrieved passages to ensure fair 'EvidenceHit@5' evaluation.
             retrieved_ids = []
             pred_domain   = None
             for trace in result.get("tool_trace", []):
@@ -84,7 +89,12 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
             all_results.append({
                 **sample,
                 "final_answer": result.get("final_answer", ""),
+                "citations":    result.get("citations", []),
                 "decision":     result.get("decision", "ANSWER"),
+            })
+            cluster_results.append({
+                "n_clusters":   result.get("n_clusters", 1),
+                "fraction_kb":  result.get("fraction_kb", 1.0),
             })
             if (i+1) % 10 == 0:
                 logger.info(f"  Processed {i+1}/{len(eval_set)} samples...")
@@ -101,10 +111,12 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
         triage_m        = compute_triage_metrics(triage_preds, triage_labels, triage_logits, mu_values=[0.10, 0.15, 0.20])
         routing_m       = compute_routing_metrics(routing_results)
         latency_m       = compute_latency_metrics(latencies_ms)
+        cluster_m       = compute_cluster_metrics(cluster_results)
+        quality_m       = compute_answer_quality_metrics(all_results)
 
-        # REE@5 (compare to baseline fraction=1.0 for full-KB search)
-        # For proposed: estimate fraction scanned as top domain chunks / total chunks
-        ree = compute_ree_at_k(ret_metrics.get("EvidenceHit@5", 0.0), fraction_kb_scanned=0.5)  # estimate
+        # REE@5
+        avg_fraction = cluster_m.get("AvgFractionKBScanned", 1.0)
+        ree = compute_ree_at_k(ret_metrics.get("EvidenceHit@5", 0.0), fraction_kb_scanned=avg_fraction)
 
         all_metrics = {
             "label":    label,
@@ -114,6 +126,8 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
             **triage_m,
             **routing_m,
             **latency_m,
+            **cluster_m,
+            **quality_m,
             "REE@5":    ree,
         }
     except Exception as e:

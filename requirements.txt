@@ -15,6 +15,7 @@ numpy>=1.24.0
 scipy>=1.11.0
 nltk>=3.8.1
 sentencepiece>=0.1.99
+protobuf>=3.20.0
 
 # Config and CLI
 pyyaml>=6.0

@@ -15,6 +15,9 @@ logger = get_logger(__name__)
 def main():
     parser = argparse.ArgumentParser(description="Train triage model")
     parser.add_argument("--config", default="configs/smoke.yaml")
+    parser.add_argument("--train_path", default=None)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--max_samples", type=int, default=None)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -22,16 +25,18 @@ def main():
 
     from src.triage.train_triage import train_triage
 
-    train_path = os.path.join(cfg.get("data_dir", "data/processed"), "triage_train.jsonl")
+    train_path = args.train_path or os.path.join(cfg.get("data_dir", "data/processed"), "triage_train.jsonl")
+    epochs = args.epochs or cfg.get("triage_epochs", 3)
+    max_samples = args.max_samples or cfg.get("max_train_samples")
     output_dir = os.path.join(cfg.get("output_dir", "outputs"), "triage")
 
     train_triage(
         train_path      = train_path,
         output_dir      = output_dir,
         model_name      = cfg.get("triage_model", "distilbert-base-uncased"),
-        epochs          = cfg.get("triage_epochs", 3),
+        epochs          = epochs,
         batch_size      = cfg.get("triage_batch_size", 8),
-        max_samples     = cfg.get("max_train_samples"),
+        max_samples     = max_samples,
         fp16            = cfg.get("fp16", True),
         seed            = cfg.get("seed", 42),
         mu              = cfg.get("mu_boundary", 0.15),

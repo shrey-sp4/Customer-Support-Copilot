@@ -33,7 +33,7 @@ def print_tool_trace(trace: list):
         console.print(panel)
 
 
-def interactive_loop(executor):
+def interactive_loop(executor, show_trace: bool = True):
     """Run an interactive CLI chat loop."""
     console.print(Panel.fit("[bold green]Support Copilot CLI[/bold green]\nType 'quit' or 'exit' to stop.", border_style="green"))
     
@@ -49,17 +49,12 @@ def interactive_loop(executor):
             console.print("\n[dim]Thinking...[/dim]")
             result = executor.run(query, history=history)
             
-            console.print("\n[bold magenta]--- Tool Trace ---[/bold magenta]")
-            print_tool_trace(result.get("tool_trace", []))
+            if show_trace:
+                console.print("\n[bold magenta]--- Tool Trace ---[/bold magenta]")
+                print_tool_trace(result.get("tool_trace", []))
             
             console.print("\n[bold cyan]--- Final Answer ---[/bold cyan]")
             console.print(result.get("final_answer", ""))
-            
-            if result.get("citations"):
-                console.print("\n[bold]Citations:[/bold]")
-                for c in result["citations"]:
-                    console.print(f"  [doc_id={c['doc_id']}, chunk_id={c['chunk_id']}, span={c['span_start']}-{c['span_end']}]")
-            
             console.print(f"\n[dim]Latency: {result.get('latency_ms', 0):.0f} ms | Decision: {result.get('decision')}[/dim]")
             
             # Append to simple history

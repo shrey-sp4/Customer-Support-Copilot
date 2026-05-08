@@ -16,7 +16,15 @@ def main():
     parser = argparse.ArgumentParser(description="Run Copilot CLI Demo")
     parser.add_argument("--config", default="configs/smoke.yaml")
     parser.add_argument("--query", type=str, default=None, help="Run a single query and exit")
+    parser.add_argument("--debug", action="store_true", help="Show raw internal INFO logs")
+    parser.add_argument("--hide-trace", action="store_true", help="Hide the pretty Tool Trace boxes")
     args = parser.parse_args()
+
+    # Suppress internal pipeline logs unless --debug is passed
+    import logging
+    if not args.debug:
+        logging.getLogger("src").setLevel(logging.WARNING)
+        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
     cfg = load_config(args.config)
     set_seed(cfg.get("seed", 42))
@@ -59,8 +67,8 @@ def main():
     
     gen_path   = os.path.join(output_dir, "generator")
     if not os.path.isdir(gen_path):
-        gen_path = None if cfg.get("generator_epochs", 0) == 0 else cfg.get("generator_model", "google/flan-t5-small")
-    generator  = load_generator(gen_path, device=device)
+        gen_path = None
+    generator  = load_generator(gen_path, device=device, cfg=cfg)
 
     kb_chunks = read_jsonl(os.path.join(data_dir, "kb_chunks.jsonl"))
     chunk_by_id = {ch["chunk_id"]: ch for ch in kb_chunks}
@@ -73,20 +81,20 @@ def main():
     from rich.console import Console
 
     console = Console()
+    gen_mode = "LLM" if executor.generator is not None else "TEMPLATE FALLBACK"
+    console.print(f"[bold blue]System initialized. Generator mode: {gen_mode}[/bold blue]")
 
     if args.query:
         console.print(f"\n[bold yellow]User:[/bold yellow] {args.query}")
         result = executor.run(args.query)
-        console.print("\n[bold magenta]--- Tool Trace ---[/bold magenta]")
-        print_tool_trace(result.get("tool_trace", []))
+        if not args.hide_trace:
+            console.print("\n[bold magenta]--- Tool Trace ---[/bold magenta]")
+            print_tool_trace(result.get("tool_trace", []))
         console.print("\n[bold cyan]--- Final Answer ---[/bold cyan]")
         console.print(result.get("final_answer", ""))
-        if result.get("citations"):
-            console.print("\n[bold]Citations:[/bold]")
-            for c in result["citations"]:
-                console.print(f"  [doc_id={c['doc_id']}, chunk_id={c['chunk_id']}, span={c['span_start']}-{c['span_end']}]")
+        console.print(f"\n[dim]Latency: {result.get('latency_ms', 0):.0f} ms | Decision: {result.get('decision')}[/dim]")
     else:
-        interactive_loop(executor)
+        interactive_loop(executor, show_trace=not args.hide_trace)
 
 
 if __name__ == "__main__":

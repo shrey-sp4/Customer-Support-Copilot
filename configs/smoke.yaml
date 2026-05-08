@@ -33,14 +33,23 @@ mu_boundary: 0.15
 lambda_boundary: 0.6
 
 # Domain routing thresholds
-tau_domain: 0.35
+tau_domain: 0.30
 tau_chunk: 0.40
+
+# Cluster-gated retrieval thresholds
+cluster_out_of_domain_threshold: 0.30
+cluster_confident_margin: 0.10
+cluster_ambiguous_top_k: 2
+evidence_answer_threshold: 0.40
+evidence_ticket_threshold: 0.10
+max_clusters_for_confident_query: 1
+max_clusters_for_ambiguous_query: 2
 
 # Model paths (use HF hub IDs)
 retriever_model: sentence-transformers/all-MiniLM-L6-v2
 reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
 triage_model: distilbert-base-uncased
-generator_model: google/flan-t5-small
+generator_model: google/flan-t5-base
 
 # Output directories
 output_dir: outputs
