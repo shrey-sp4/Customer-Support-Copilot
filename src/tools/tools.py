@@ -89,15 +89,17 @@ def get_policy(
     """Execute GetPolicy tool — fetches full policy text for a doc/section."""
     policy_text = ""
     if chunk_by_id:
-        # Try to find chunks matching doc_id and section_id
+        # Concatenate all chunks for this section
         matching = [
             ch["text"] for ch in chunk_by_id.values()
             if ch.get("doc_id") == doc_id
             and (not section_id or ch.get("section_id") == section_id)
         ]
-        policy_text = " ".join(matching[:3])  # Concatenate up to 3 matching chunks
+        policy_text = " ".join(matching).strip()
+        
     if not policy_text:
         policy_text = f"[Policy text for {doc_id}/{section_id} not found in KB]"
+        
     return {
         "tool": "GetPolicy",
         "args": {"doc_id": doc_id, "section_id": section_id},

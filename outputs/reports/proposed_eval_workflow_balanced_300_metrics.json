@@ -1,0 +1,66 @@
+{
+  "label": "Proposed",
+  "n_eval": 300,
+  "Recall@1": 0.07333333333333333,
+  "Recall@5": 0.11333333333333333,
+  "MRR@10": 0.09103571428571426,
+  "nDCG@10": 0.10249565506426776,
+  "EvidenceHit@5": 0.11333333333333333,
+  "CitationDocPrecision": 0.33,
+  "CitationChunkPrecision": 0.16,
+  "GroundedAnswerRate": 0.79,
+  "UnsupportedAnswerRate": 0.20999999999999996,
+  "TriageAccuracy": 0.49,
+  "MacroF1": 0.4639929484755447,
+  "WeightedF1": 0.4639929484755446,
+  "ANSWER_F1": 0.5830258302583026,
+  "ANSWER_P": 0.4619883040935672,
+  "ANSWER_R": 0.79,
+  "TICKET_F1": 0.13836477987421383,
+  "TICKET_P": 0.1864406779661017,
+  "TICKET_R": 0.11,
+  "REJECT_F1": 0.6705882352941176,
+  "REJECT_P": 0.8142857142857143,
+  "REJECT_R": 0.57,
+  "FalseRejectRate": 0.13,
+  "FalseTicketRate": 0.08,
+  "FalseAcceptRate": 0.46,
+  "LabelDistPred": {
+    "TICKET": 59,
+    "ANSWER": 171,
+    "REJECT": 70
+  },
+  "LabelDistGold": {
+    "REJECT": 100,
+    "ANSWER": 100,
+    "TICKET": 100
+  },
+  "ConfusionMatrix": [
+    [
+      79,
+      8,
+      13
+    ],
+    [
+      89,
+      11,
+      0
+    ],
+    [
+      3,
+      40,
+      57
+    ]
+  ],
+  "DomainAccuracy": 0.3333333333333333,
+  "DomainRecall@2": 0.3333333333333333,
+  "AvgLatencyMs": 51.16206487019857,
+  "P50LatencyMs": 56.73420429229736,
+  "P95LatencyMs": 79.11665439605713,
+  "P99LatencyMs": 91.49828910827637,
+  "QueriesPerSec": 19.545731833479824,
+  "TotalSamples": 300,
+  "AvgClustersSearched": 1.0733333333333333,
+  "AvgFractionKBScanned": 0.2683333333333333,
+  "REE@5": 0.422360248447205
+}

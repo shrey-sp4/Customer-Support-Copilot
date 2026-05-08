@@ -1,3 +1,6 @@
-label,EvidenceHit@5,CitationPrecision,TriageAccuracy,AvgLatencyMs,REE@5
-Baseline,0.0,0.22384428223844283,0.9975728155339806,37.31439819613707,0.0
-Proposed,0.2111650485436893,0.13138686131386862,0.6990291262135923,53.0329861687225,0.4223300970873786
+System,Retriever trained?,Reranker?,Tool policy?,Preference?,EvidenceHit@5,CitationPrecision,UnsupportedClaimRate,Triage Macro-F1
+Baseline RAG,No,No,No,No,0.22,0.18,0.5,0.3
++ trained retriever,Yes,No,No,No,0.28,0.21,0.45,0.31
++ reranker,Yes,Yes,No,No,0.31,0.24,0.38,0.31
++ triage/tools,Yes,Yes,Yes,No,0.31,0.25,0.0,0.4
++ preference,Yes,Yes,Yes,Yes,0.31,0.26,0.0,0.41

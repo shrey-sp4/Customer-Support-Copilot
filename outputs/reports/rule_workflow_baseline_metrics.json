@@ -1,0 +1,19 @@
+{
+  "EvidenceHit@5": 0.0,
+  "EvidenceDocHit@5": 0.0,
+  "CitationDocPrecision": 0.0,
+  "Triage Accuracy": 0.575,
+  "Macro-F1": 0.4102286075720611,
+  "ANSWER F1": 0.7096774193548387,
+  "TICKET F1": 0.23529411764705882,
+  "REJECT F1": 0.2857142857142857,
+  "UnsupportedAnswerRate": 0.4424778761061947,
+  "WrongDomainCitationRate": 0.8141592920353983,
+  "DirectAnswerRate": 0.7699115044247787,
+  "FragmentRate": 0.0,
+  "RepetitionRate": 0.0,
+  "AnswerQualityScore": 0.7026548672566371,
+  "Avg Fraction KB Scanned": 1.0,
+  "REE@5": 0.575,
+  "Avg Latency": 310.6044018268585
+}

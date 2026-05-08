@@ -151,6 +151,25 @@ def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[str], b
     return answer + cit_str, citations, False
 
 
+def verify_grounding(answer: str, passages: List[dict]) -> Tuple[bool, str]:
+    """Verify that every sentence in the answer is supported by the evidence."""
+    sentences = re.split(r'(?<=[.!?])\s+', answer)
+    evidence_text = " ".join([p.get("text", "") for p in passages]).lower()
+    evidence_tokens = set(re.findall(r"\b\w{4,}\b", evidence_text)) # Use tokens with length >= 4
+    
+    for sent in sentences:
+        if not sent.strip(): continue
+        sent_tokens = set(re.findall(r"\b\w{4,}\b", sent.lower()))
+        # Check if at least 30% of significant tokens exist in evidence
+        if sent_tokens:
+            overlap = len(sent_tokens.intersection(evidence_tokens))
+            coverage = overlap / len(sent_tokens)
+            if coverage < 0.3:
+                return False, f"Unsupported claim: '{sent[:50]}...'"
+                
+    return True, "Verified"
+
+
 def validate_answer_quality(answer: str, query: str, citations: List[str]) -> bool:
     """Perform quality gate checks on the generated answer."""
     if not answer or len(answer.strip()) < 15:
@@ -221,8 +240,9 @@ def generate_answer(
         best = run_generation(strict=True)
 
     # Final quality gate (Part E)
-    if not best or "INSUFFICIENT_EVIDENCE" in best or not validate_answer_quality(best, query, citations):
-        logger.warning(f"[Generation] Quality gate failed. Result: {best[:50]}...")
+    is_grounded, grounding_reason = verify_grounding(best, passages)
+    if not best or "INSUFFICIENT_EVIDENCE" in best or not validate_answer_quality(best, query, citations) or not is_grounded:
+        logger.warning(f"[Generation] Quality/Grounding gate failed. Reason: {grounding_reason if not is_grounded else 'Quality'}. Result: {best[:50]}...")
         return "I could not generate a high-quality answer from the available evidence.", citations, True
 
     # Post-process for common tokenizer issues

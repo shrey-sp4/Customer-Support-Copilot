@@ -1,0 +1,71 @@
+{
+  "label": "Proposed",
+  "n_eval": 100,
+  "Recall@1": 0.19,
+  "Recall@5": 0.31,
+  "MRR@10": 0.2408968253968254,
+  "nDCG@10": 0.2802241779969521,
+  "EvidenceHit@5": 0.31,
+  "CitationDocPrecision": 0.29,
+  "CitationChunkPrecision": 0.15,
+  "GroundedAnswerRate": 0.84,
+  "UnsupportedAnswerRate": 0.16000000000000003,
+  "TriageAccuracy": 0.84,
+  "MacroF1": 0.3043478260869565,
+  "WeightedF1": 0.9130434782608695,
+  "ANSWER_F1": 0.9130434782608695,
+  "ANSWER_P": 1.0,
+  "ANSWER_R": 0.84,
+  "TICKET_F1": 0.0,
+  "TICKET_P": 0.0,
+  "TICKET_R": 0.0,
+  "REJECT_F1": 0.0,
+  "REJECT_P": 0.0,
+  "REJECT_R": 0.0,
+  "FalseRejectRate": 0.02,
+  "FalseTicketRate": 0.14,
+  "FalseAcceptRate": 0.0,
+  "LabelDistPred": {
+    "ANSWER": 84,
+    "REJECT": 2,
+    "TICKET": 14
+  },
+  "LabelDistGold": {
+    "ANSWER": 100
+  },
+  "ConfusionMatrix": [
+    [
+      84,
+      14,
+      2
+    ],
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ]
+  ],
+  "DomainAccuracy": 0.69,
+  "DomainRecall@2": 0.69,
+  "AvgLatencyMs": 268.9353537559509,
+  "P50LatencyMs": 237.17951774597168,
+  "P95LatencyMs": 566.1141037940979,
+  "P99LatencyMs": 632.3007631301945,
+  "QueriesPerSec": 3.7183657188763055,
+  "TotalSamples": 100,
+  "AvgClustersSearched": 1.36,
+  "AvgFractionKBScanned": 0.34,
+  "answer_has_citation_rate": 1.0,
+  "avg_answer_length_words": 81.03571428571429,
+  "answer_too_long_rate": 0.0,
+  "answer_fragment_rate": 0.0,
+  "bad_spacing_or_apostrophe_rate": 0.0,
+  "unsupported_answer_rate": 0.0,
+  "avg_answer_quality_rubric_score": 0.9309523809523809,
+  "REE@5": 0.9117647058823529
+}

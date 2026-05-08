@@ -449,6 +449,12 @@ class ToolExecutor:
             citations  = []
 
         else:  # ANSWER
+            # 5a. Fetch policy for top passage (Part 5: Real Tool Loop)
+            if final_evidence:
+                best_p = final_evidence[0]
+                pol_res = get_policy(best_p["doc_id"], best_p["section_id"], self.chunk_by_id)
+                tool_trace.append(pol_res)
+            
             # Generate answer using ONLY final_evidence
             final_answer, citations, is_insufficient = generate_answer(
                 query=query,

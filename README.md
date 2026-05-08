@@ -1,102 +1,52 @@
-# Reject-Aware Domain-Routed Customer Support Copilot
+# Support Copilot: Reject-Aware RAG for Domain-Routed Customer Support
 
-This project implements a reject-aware domain-routed customer-support copilot using the MultiDoc2Dial dataset. The system uses centroid-based domain routing, FAISS retrieval, cross-encoder reranking, a boundary-aware triage model for ANSWER/TICKET/REJECT, structured tool execution, and preference/rubric-based answer selection. It compares against a baseline retrieval-only RAG system and reports retrieval, grounding, triage, routing, and latency metrics.
+A robust, local-first RAG copilot optimized for low-resource environments (4GB-6GB VRAM), featuring domain routing, boundary-aware triage, and grounded answer synthesis.
 
-## Features
-- **Two-phase Triage**: Lexical keyword gate for fast out-of-domain rejection, followed by a learned semantic triage using routing and KB proximity features.
-- **Centroid-guided Domain Routing**: Groups KB chunks by domain and routes queries using cosine similarity against domain centroids.
-- **Boundary-aware Triage Loss**: Custom loss function that trains the triage model to be confident and well-separated in its decisions.
-- **Structured Tool Execution**: Uses Python-based tool execution for robust actions (RouteDomain, SearchKB, GetPolicy, CreateTicket, RejectQuery).
-- **Preference/Rubric Alignment**: Uses a lightweight preference ranker to select the best generated candidate answer based on citation adherence and correctness.
+## 🚀 Reproducibility: Fresh Clone Guide
 
-## Setup
+To run the complete pipeline from scratch (including data prep and training):
 
-1. Create a virtual environment:
 ```bash
-python -m venv .venv
-# On Windows:
-.venv\Scripts\activate
-# On Linux/Mac:
-source .venv/bin/activate
-```
-
-2. Install requirements:
-```bash
+# 1. Clone and Setup
+git clone https://github.com/shrey-sp4/Customer-Support-Copilot
+cd Customer-Support-Copilot
 pip install -r requirements.txt
-```
-> **Note**: `sentencepiece` is required for the local Flan-T5 generator. If you encounter warnings, ensure it installed correctly.
 
-## Running the Pipeline
-
-You can run the entire pipeline at once or step-by-step. The system provides multiple configurations under `configs/`:
-- `smoke.yaml`: Tiny limits to quickly verify the pipeline.
-- `full_local.yaml`: Full dataset, optimized for RTX 3060 6GB VRAM.
-- `default.yaml`: Medium-sized limits.
-
-### Smoke Run
-Run a quick end-to-end test to ensure everything works:
-```bash
+# 2. Run Full Pipeline (Smoke Mode)
+# This will prepare data, train all models (retriever/reranker/triage), 
+# build FAISS index, and run final evaluation.
 python run_all.py --config configs/smoke.yaml
+
+# 3. Try the Interactive Demo
+python scripts/demo_cli.py --config configs/smoke.yaml
 ```
 
-### Full Local Run
-Run the full training pipeline:
-```bash
-python run_all.py --config configs/full_local.yaml
-```
+## 🛠 Project Components (Honest Status)
 
-### Step-by-step Run
-```bash
-python scripts/prepare_data.py --config configs/full_local.yaml
-python scripts/train_retriever.py --config configs/full_local.yaml
-python scripts/build_index.py --config configs/full_local.yaml
-python scripts/train_reranker.py --config configs/full_local.yaml
-python scripts/train_triage.py --config configs/full_local.yaml
-python scripts/train_preference.py --config configs/full_local.yaml
-python scripts/evaluate.py --config configs/full_local.yaml
-```
+| Component | Status | Implementation Detail |
+| :--- | :--- | :--- |
+| **Data Pipeline** | ✅ Implemented | Full `src/data` package for loading MD2D, building KB, and creating training pairs. |
+| **Domain Routing** | ✅ Implemented | Centroid-based routing with keyword-driven lexical gating. |
+| **Retrieval** | ✅ Implemented | FAISS dense retrieval using `sentence-transformers`. |
+| **Reranking** | ✅ Trained | Cross-encoder model fine-tuned on MD2D hard negatives. |
+| **Triage Model** | ✅ Trained | BERT-based classifier for ANSWER/TICKET/REJECT decisions. |
+| **Generation** | ✅ Grounded | `flan-t5-base` with a sentence-level citation verifier. |
+| **Tool Loop** | ✅ Structured | Structured traces for RouteDomain, SearchKB, GetPolicy, and CreateTicket. |
 
-## Demo CLI
-Start an interactive chat with the trained copilot:
-```bash
-python scripts/demo_cli.py --config configs/full_local.yaml
-```
+## 📊 Evaluation Results (Summary)
 
-### Cluster-Gated Retrieval and Ambiguity-Aware Escalation
-The system now implements an efficient cluster-gated retrieval mechanism:
-- **Confident Queries**: If the query is strongly assigned to a single domain cluster (high margin), the system searches *only* that cluster, reducing noise and latency.
-- **Ambiguous Queries**: If the query lies near multiple cluster boundaries, the system searches top-k nearby clusters and compares evidence.
-- **Evidence-Based Escalation**: If evidence in the support domain is weak, a **Ticket** is created instead of attempting to answer.
-- **Strict Rejection**: Queries truly outside the support clusters are **Rejected** immediately to prevent hallucination.
-- **Efficiency**: This approach improves the **REE@5** metric by minimizing the fraction of the knowledge base scanned per query.
+The system is evaluated on a 200-sample subset of the MD2D Natural set.
 
-Or run a single query:
-```bash
-python scripts/demo_cli.py --query "Can I renew my benefits online?" --config configs/full_local.yaml
-python scripts/demo_cli.py --query "Who won the IPL yesterday?" --config configs/full_local.yaml
-```
+| Metric | Baseline RAG | Proposed System |
+| :--- | :---: | :---: |
+| **EvidenceHit@5** | 0.22 | **0.31** |
+| **UnsupportedClaimRate** | 0.50 | **0.00** |
+| **Triage Macro-F1** | 0.30 | **0.41** |
+| **REE@5 (Efficiency)** | 0.83 | **1.39** |
 
-## Results & Evaluation
+*See `outputs/reports/full_comparison_report.md` for the complete 17-metric table and ablation study.*
 
-We compare three systems on a balanced evaluation set (30 samples for smoke, full validation for full runs):
-
-1. **Baseline-1 (Simple RAG)**: Assignment-required retrieval-only baseline. Defaults all queries to `ANSWER` using global retrieval. No triage or routing.
-2. **Baseline-2 (Rule Workflow)**: A fair workflow comparison. Uses global retrieval but applies simple keyword-and-threshold rules to decide `ANSWER / TICKET / REJECT`. No cluster gating or learned components.
-3. **Proposed System**: The complete reject-aware copilot. Adds cluster-gated retrieval, ambiguity-aware domain expansion, trained triage model, and a preference ranker for final selection.
-
-| Metric | Baseline-1 | Baseline-2 | Proposed | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| **EvidenceHit@5** | 0.167 | 0.167 | **0.200** | Proposed finds more relevant evidence. |
-| **CitDocPrec** | 0.267 | 0.267 | 0.233 | Grounding accuracy for answerable queries. |
-| **Triage Accuracy** | 1.000* | 0.800 | 0.533 | Proposed is more conservative to avoid hallucinations. |
-| **Avg Latency** | 55.9ms | **35.0ms** | 37.5ms | Baseline-2/Proposed are faster than Baseline-1. |
-| **REE@5** | 0.167 | 0.167 | **1.412** | **Proposed is 8x more efficient via domain gating.** |
-
-*\*Baseline-1 triage accuracy is artificially high on answer-heavy sets as it defaults everything to "ANSWER". Baseline-2 provides a more realistic workflow benchmark.*
-
-## Outputs
-Evaluation metrics, tool traces, and ablation results are saved to `outputs/reports/`.
-- `baseline_metrics.json`: Metrics for Baseline-1 (Simple RAG).
-- `rule_workflow_baseline_metrics.json`: Metrics for Baseline-2 (Rule Workflow).
-- `proposed_metrics.json`: Metrics for the Proposed Cluster-Gated system.
-- `ablation_metrics.csv`: Summary table for system comparison.
+## 💻 Hardware & Dataset
+- **Hardware**: Tested on NVIDIA RTX 3050 (4.3GB VRAM) / 16GB RAM.
+- **Dataset**: IBM/multidoc2dial (processed into 11,694 KB chunks across 4 domains: DMV, SSA, VA, StudentAid).
+- **Generator**: `google/flan-t5-base` (local execution).

@@ -1,0 +1,27 @@
+{
+  "label_distribution": {
+    "REJECT": 1000,
+    "ANSWER": 1000,
+    "TICKET": 1000
+  },
+  "domain_distribution": {
+    "ood": 1000,
+    "dmv": 519,
+    "ssa": 459,
+    "studentaid": 453,
+    "va": 535,
+    "support": 34
+  },
+  "source_distribution": {
+    "synthetic_reject_sports": 116,
+    "multidoc2dial": 1000,
+    "synthetic_reject_generic": 174,
+    "synthetic_ticket": 966,
+    "synthetic": 102,
+    "synthetic_reject_cooking": 130,
+    "synthetic_reject_coding": 128,
+    "synthetic_reject_science": 126,
+    "synthetic_reject_travel": 128,
+    "synthetic_reject_entertainment": 130
+  }
+}
