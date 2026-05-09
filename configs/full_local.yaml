@@ -51,7 +51,7 @@ reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
 triage_model: distilbert-base-uncased
 # Generator Settings
 generator_enabled: true
-generator_model_name: google/flan-t5-base
+generator_model_name: google/flan-t5-small
 generator_fallback_model_name: google/flan-t5-small
 generator_max_input_tokens: 768
 generator_max_new_tokens: 1024
@@ -63,9 +63,10 @@ top_evidence_count: 4
 retriever_model: sentence-transformers/all-MiniLM-L6-v2
 reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
 triage_model: distilbert-base-uncased
-generator_model: google/flan-t5-base
+generator_model: google/flan-t5-small
 
 # Output directories
 output_dir: outputs
 data_dir: data/processed
 index_dir: data/indexes
+domain_indexes_dir: data/smoke_indexes/domain

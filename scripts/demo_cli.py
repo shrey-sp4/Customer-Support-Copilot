@@ -54,11 +54,20 @@ def main():
     if not os.path.isdir(model_path):
         model_path = cfg.get("retriever_model", "sentence-transformers/all-MiniLM-L6-v2")
     encoder = SentenceTransformer(model_path, device=str(device))
+    domain_indexes_dir = cfg.get("domain_indexes_dir")
+    if not domain_indexes_dir:
+        # Try to infer: if index_dir is '.../global', maybe '.../domain' exists alongside it
+        potential_domain_dir = os.path.join(os.path.dirname(index_dir), "domain")
+        if os.path.isdir(potential_domain_dir):
+            domain_indexes_dir = potential_domain_dir
+        else:
+            domain_indexes_dir = "data/indexes_by_domain"
+
     searcher = load_searcher(
         index_dir, 
         os.path.join(data_dir, "kb_chunks.jsonl"), 
         encoder,
-        domain_indexes_dir="data/indexes_by_domain"
+        domain_indexes_dir=domain_indexes_dir
     )
     
     router = load_router(
