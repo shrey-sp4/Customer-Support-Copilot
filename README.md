@@ -65,7 +65,7 @@ The following metrics represent the authoritative "Source of Truth" for this rep
 ### 1. REE@5 (Retrieval Efficiency Index)
 - **Formula**: `EvidenceHit@5 / Fraction of KB Scanned`
 - **Meaning**: How much retrieval performance we get per unit of search effort. 
-- **The 38% Scanned**: This is the average fraction of the total knowledge base active during retrieval. By routing queries to specific domains (DMV, SSA, etc.), we ignore ~62% of irrelevant data, significantly reducing "noise" and search latency.
+- **The 30% Scanned**: This is the average fraction of the total knowledge base active during retrieval. By routing queries to specific domains (DMV, SSA, etc.), we ignore ~70% of irrelevant data, significantly reducing "noise" and search latency.
 
 ### 2. ESA (Evidence Support Accuracy)
 ESA is our strictest groundedness metric. A sample passes (ESA=1) only if:
