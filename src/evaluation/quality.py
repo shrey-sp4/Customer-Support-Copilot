@@ -2,21 +2,13 @@ import re
 import numpy as np
 from typing import List, Dict
 
-def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dict:
+def compute_answer_quality_metrics(results: List[dict], encoder=None, cfg: dict = None) -> dict:
     """
     Compute automated quality metrics for ANSWER predictions.
     
-    Metrics:
-    - AnswerQualityScore
-    - DirectAnswerRate
-    - FragmentRate
-    - RepetitionRate
-    - BadGrammarRate
-    - WrongDomainCitationRate
-    - IncoherentMultiEvidenceRate
-    - AnswerTooLongRate
-    - AnswerHasCitationRate
-    - UnsupportedAnswerRate
+    If encoder is provided, includes:
+    - SemanticFidelityScore: Similarity between answer and cited evidence (Neural Factuality)
+    - SemanticRelevanceScore: Similarity between query and answer
     """
     answers = [r for r in results if r.get("decision") == "ANSWER"]
     if not answers:
@@ -32,6 +24,8 @@ def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dic
     direct_answer = []
     wrong_domain = []
     incoherent = []
+    semantic_fidelity = [] # Neural Factuality
+    semantic_relevance = [] # Neural Relevance
     rubric_scores = []
 
     # Rubric Weights from config
@@ -40,8 +34,9 @@ def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dic
     w_frag  = getattr(cfg, "weight_fragment", 0.1)
     w_gram  = getattr(cfg, "weight_grammar", 0.1)
     w_rep   = getattr(cfg, "weight_repetition", 0.1)
-    w_dir   = getattr(cfg, "weight_direct", 0.2)
-    w_dom   = getattr(cfg, "weight_domain", 0.2)
+    w_dir   = getattr(cfg, "weight_direct", 0.1)
+    w_dom   = getattr(cfg, "weight_domain", 0.1)
+    w_fid   = getattr(cfg, "weight_fidelity", 0.3) # Neural Factuality is the most important
     
     # Thresholds from config
     max_ans_len = getattr(cfg, "max_answer_length", 150)
@@ -126,13 +121,33 @@ def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dic
         wrong_domain.append(is_wrong_domain)
         
         # 10. Incoherent Multi-Evidence
-        is_incoherent = 0
-        if len(citations) > 1:
-            # Check if domains match in citations
-            citation_domains = [c.split(":")[0].strip("[ ").lower() for c in citations]
-            if len(set(citation_domains)) > 1:
                 is_incoherent = 1
         incoherent.append(is_incoherent)
+
+        # 11. Neural Semantic Fidelity & Relevance
+        fidelity_val = 0.5 # Default middle-ground
+        relevance_val = 0.5
+        
+        if encoder and text and "could not find enough evidence" not in text:
+            # Neural Factuality: similarity to top evidence
+            passages_text = res.get("gold_doc_text", "")
+            if not passages_text and res.get("tool_trace"):
+                for trace in res["tool_trace"]:
+                    if trace.get("tool") == "SearchKB":
+                        ps = trace.get("result", {}).get("passages", [])
+                        if ps: passages_text = ps[0].get("text", "")
+            
+            if passages_text:
+                embs = encoder.encode([text, passages_text, query], convert_to_numpy=True, show_progress_bar=False)
+                ans_emb = embs[0]
+                ev_emb = embs[1]
+                q_emb = embs[2]
+                
+                fidelity_val = float(np.dot(ans_emb, ev_emb) / (np.linalg.norm(ans_emb) * np.linalg.norm(ev_emb) + 1e-8))
+                relevance_val = float(np.dot(ans_emb, q_emb) / (np.linalg.norm(ans_emb) * np.linalg.norm(q_emb) + 1e-8))
+        
+        semantic_fidelity.append(max(0.0, fidelity_val))
+        semantic_relevance.append(max(0.0, relevance_val))
 
         # Rubric Score (0 to 1)
         score = 0
@@ -143,7 +158,10 @@ def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dic
         if not has_repetition: score += w_rep
         if is_direct: score += w_dir
         if not is_wrong_domain: score += w_dom
-        rubric_scores.append(score)
+        
+        # Add Neural scores (weighted)
+        score += fidelity_val * w_fid
+        rubric_scores.append(min(1.0, score))
 
     return {
         "AnswerQualityScore": np.mean(rubric_scores),
@@ -154,5 +172,7 @@ def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dic
         "IncoherentMultiEvidenceRate": np.mean(incoherent),
         "AnswerTooLongRate": np.mean(too_long),
         "AnswerHasCitationRate": np.mean(has_citations),
+        "SemanticFidelityScore": np.mean(semantic_fidelity),
+        "SemanticRelevanceScore": np.mean(semantic_relevance),
         "avg_answer_length": np.mean(lengths)
     }

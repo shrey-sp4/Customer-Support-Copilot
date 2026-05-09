@@ -44,6 +44,17 @@ def evidence_hit_at_k(retrieved_ids: List[str], gold_id: str, k: int) -> float:
     return float(gold_id in retrieved_ids[:k])
 
 
+def doc_hit_at_k(retrieved_ids: List[str], gold_id: str, k: int) -> float:
+    """Check if the document (prefix before _chunk_) matches."""
+    if not gold_id: return 0.0
+    gold_doc = gold_id.split("_chunk_")[0] if "_chunk_" in gold_id else gold_id
+    for rid in retrieved_ids[:k]:
+        rdoc = rid.split("_chunk_")[0] if "_chunk_" in rid else rid
+        if rdoc == gold_doc:
+            return 1.0
+    return 0.0
+
+
 def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
     """Compute retrieval metrics over a list of result dicts.
 
@@ -54,7 +65,7 @@ def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
     if not eval_results:
         return {}
 
-    r1 = r5 = mrr = ndcg = eh5 = 0.0
+    r1 = r5 = mrr = ndcg = eh5 = dh5 = 0.0
     n = len(eval_results)
 
     for r in eval_results:
@@ -66,6 +77,7 @@ def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
         mrr += mrr_at_k(ids, gold, 10)
         ndcg += ndcg_at_k(ids, gold, 10)
         eh5 += evidence_hit_at_k(ids, gold, top_k)
+        dh5 += doc_hit_at_k(ids, gold, top_k)
 
     return {
         "Recall@1": r1 / n,
@@ -73,6 +85,7 @@ def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
         "MRR@10": mrr / n,
         "nDCG@10": ndcg / n,
         "EvidenceHit@5": eh5 / n,
+        "EvidenceDocHit@5": dh5 / n,
     }
 
 

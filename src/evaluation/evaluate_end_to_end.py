@@ -125,7 +125,9 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
         latency_m       = compute_latency_metrics(latencies_ms)
         comp_latency_m  = compute_component_latency_metrics(latency_breakdowns)
         cluster_m       = compute_cluster_metrics(cluster_results)
-        quality_m       = compute_answer_quality_metrics(all_results, cfg=cfg)
+        # Pass encoder for Neural Semantic Fidelity check
+        encoder = getattr(executor, "encoder", None)
+        quality_m       = compute_answer_quality_metrics(all_results, encoder=encoder, cfg=cfg)
         grounding_m     = grounded_answer_rate(all_results) # Final authority on grounding & decisions
         
         # Neural Gen Metrics

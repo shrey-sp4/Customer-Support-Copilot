@@ -151,7 +151,8 @@ def main():
             "GoldAnswerAnsweredRate", "GoldAnswerTicketRate", "GoldAnswerRejectRate",
             "FinalAnswerRate", "FinalTicketRate", "FinalRejectRate",
             "PredictedAnswerCitationRate", "DomainAccuracy", "DomainRecall@2",
-            "AvgLatencyMs", "AvgSearch_ms", "AvgFractionKBScanned", "NeuralGenRate", "REE@5"
+            "AvgLatencyMs", "AvgSearch_ms", "AvgFractionKBScanned", 
+            "EvidenceDocHit@5", "SemanticFidelityScore", "NeuralGenRate", "REE@5"
         ]
         
         csv_path = os.path.join(rep_dir, "ablation_metrics.csv")
@@ -161,18 +162,18 @@ def main():
             writer.writerows(rows)
         
         logger.info("\n--- METRIC SUMMARY ---")
-        header = f"{'label':<12} | EvHit5 | WDDom  | TriAcc | MacF1  | GA_Ans | GA_Tkt | Neural% | LatMs | FracKB | REE@5"
+        header = f"{'label':<12} | EvHit5 | DocHt5 | TriAcc | MacF1  | Fidely | GA_Ans | Neural% | LatMs | REE@5"
         print(header)
         print("-" * len(header))
         for r in rows:
             print(f"{r.get('label'):<12} | {r.get('EvidenceHit@5',0):.3f} | "
-                f"{r.get('WrongDomainCitationRate',0):.3f} | "
+                f"{r.get('EvidenceDocHit@5',0):.3f} | "
                 f"{r.get('TriageAccuracy',0):.3f} | {r.get('MacroF1',0):.3f} | "
+                f"{r.get('SemanticFidelityScore',0):.3f} | "
                 f"{r.get('GoldAnswerAnsweredRate',0):.3f} | "
-                f"{r.get('GoldAnswerTicketRate',0):.3f} | "
                 f"{r.get('NeuralGenRate',0)*100:>6.1f}% | "
                 f"{r.get('AvgLatencyMs',0):.1f} | "
-                f"{r.get('AvgFractionKBScanned',0):.3f} | {r.get('REE@5',0):.3f}")
+                f"{r.get('REE@5',0):.3f}")
 
         logger.info(f"Evaluation complete. Authoritative reports saved in {rep_dir}")
 
