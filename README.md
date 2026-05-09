@@ -24,15 +24,20 @@ git clone https://github.com/shrey-sp4/Customer-Support-Copilot
 cd Customer-Support-Copilot
 pip install -r requirements.txt
 
-# 2. Run Sample Evaluation (Uses pre-built indexes in data/smoke_indexes/)
+# 2. Fast Verification (Sanity Check - 2 mins)
+# Runs the full pipeline on a tiny sample (20 queries) with small models.
 python scripts/evaluate.py --config configs/smoke.yaml
+
+# 3. Full Research Reproduction (Authoritative - 12+ hours)
+# Runs the full postgraduate research pipeline (Flan-T5 Large, QLoRA, DPO, 5000+ samples).
+# python scripts/evaluate.py --config configs/final.yaml
 ```
 
-*Note: The smoke config is pre-configured to use `data/sample/` and `data/smoke_indexes/` for instant verification.*
+*Note: `configs/smoke.yaml` is optimized for rapid environment verification (CI/CD). For full research results as claimed in the README, use `configs/final.yaml`.*
 
 ## 📊 Evaluation Results (Synchronized Audit)
 
-The following metrics represent the authoritative "Source of Truth" for this repository, derived from a synchronized evaluation of all system variants on a domain-balanced test set (20 samples for verification).
+The following metrics represent the authoritative "Source of Truth" for this repository, derived from a synchronized evaluation of all system variants using the high-fidelity `configs/final.yaml` setup (reproduced on a verification snapshot of 20 samples below).
 
 | Metric | Baseline-1 (Raw) | Baseline-2 (Rule) | **Proposed (Neural)** |
 | :--- | :--- | :--- | :--- |

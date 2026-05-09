@@ -1,4 +1,4 @@
-mode: smoke
+mode: smoke_sanity_check # Fast verification for CI/CD or environment setup
 seed: 42
 device: auto
 
@@ -76,7 +76,7 @@ insufficient_evidence_ticket_confidence: 0.70
 retriever_model: outputs/retriever
 reranker_model: outputs/reranker
 triage_model: outputs/triage
-generator_model: google/flan-t5-base
+generator_model: google/flan-t5-small
 generator_lora_path: outputs/generator_lora
 preference_dpo_path: outputs/preference_dpo
 generator_fallback_model_name: google/flan-t5-small

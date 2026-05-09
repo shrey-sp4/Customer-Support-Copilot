@@ -427,8 +427,8 @@ def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[F
     """Load generator with optional LoRA/DPO adapters."""
     if cfg is None: cfg = {}
     
-    # Priority: 1. Config model_name, 2. Passed model_path
-    base_model = cfg.get("generator_model_name") or model_path or "google/flan-t5-base"
+    # Priority: 1. Config model, 2. Passed model_path
+    base_model = cfg.get("generator_model") or cfg.get("generator_model_name") or model_path or "google/flan-t5-base"
     
     # PEFT Adapters (Ordered by preference)
     lora_path = cfg.get("generator_lora_path") or "outputs/generator_lora"

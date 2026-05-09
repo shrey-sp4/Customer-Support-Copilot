@@ -1,0 +1,112 @@
+mode: final
+seed: 42
+device: auto
+
+# Sample limits - Full Research Dataset
+max_train_samples: 5000
+max_eval_samples: 500
+max_kb_chunks: null
+
+# Training epochs - Rigorous Fine-Tuning
+retriever_epochs: 3
+reranker_epochs: 3
+triage_epochs: 5
+preference_epochs: 3
+generator_epochs: 5
+
+# Batch sizes - Optimized for 4-bit and Grad Accumulation
+batch_size: 4
+reranker_batch_size: 2
+triage_batch_size: 8
+gradient_accumulation_steps: 4
+
+# Precision & Performance
+fp16: true
+load_in_4bit: true
+
+# Paths
+output_dir: outputs
+data_dir: data/processed
+index_dir: data/indexes
+raw_index_dir: data/indexes_raw
+domain_indexes_dir: data/indexes_by_domain
+eval_file: eval_md2d_natural_1000.jsonl
+reports_dir: outputs/reports
+
+# Retrieval
+top_k_retrieval: 20
+top_k_rerank: 5
+top_k_domains: 3
+global_domain_filter_multiplier: 5
+
+# Triage loss
+mu_boundary: 0.15
+lambda_boundary: 0.6
+
+# Routing/Triage Thresholds
+tau_domain: 0.30
+tau_chunk: 0.45
+tau_hard_reject: 0.05
+tau_soft_domain: 0.15
+cluster_out_of_domain_threshold: 0.30
+cluster_confident_margin: 0.15
+cluster_ambiguous_top_k: 3
+
+# Evidence Logic
+evidence_answer_threshold: 0.50
+evidence_ticket_threshold: 0.20
+high_confidence_evidence_threshold: 0.75
+
+# Model paths/names (Authorized Postgraduate Config)
+retriever_model: outputs/retriever
+reranker_model: outputs/reranker
+triage_model: outputs/triage
+generator_model: google/flan-t5-large
+generator_lora_path: outputs/generator_lora
+preference_dpo_path: outputs/preference_dpo
+generator_fallback_model_name: google/flan-t5-base
+
+# Generation controls
+generator_max_new_tokens: 128
+generator_num_beams: 5
+generator_temperature: 0.0
+generator_tokenizer_max_length: 768
+
+# Evaluation settings
+retrieval_eval_top_k: 5
+mrr_k: 10
+ndcg_k: 10
+
+# Safety & Intent Guardrails
+safety_gate:
+  ood_patterns: [
+    "\\b(recipe|cook|bake|chef|food|meal|dish|restaurant)\\b",
+    "\\b(ipl|cricket|football|soccer|nba|nfl|sports|match|score|game)\\b",
+    "\\b(netflix|amazon|ebay|paypal|youtube|instagram|facebook|twitter)\\b",
+    "\\b(movie|film|series|show|streaming)\\b",
+    "\\b(joke|meme|riddle|funny|humor)\\b",
+    "\\b(code|programming|python|java|algorithm|software)\\b",
+    "\\b(bitcoin|crypto|ethereum|stock|forex|trading)\\b",
+    "\\b(weather|forecast|temperature|rain|sun)\\b",
+    "\\b(paris|france|london|capital|geography)\\b",
+    "\\b(black hole|quantum|physics|astronomy|space)\\b"
+  ]
+  vague_patterns: [
+    "^\\s*(why am i here|what is this|help me|what should i do|tell me something|explain this|who are you|are you real|what do you do|what can you do|what is your purpose|i don.t know|idk|huh|ok|okay|thanks|thank you|hi+|hey+|hello+|yes|no|sure|maybe|alright|got it|i see)\\s*[.?!]*\\s*$"
+  ]
+
+account_action:
+  patterns: [
+    "\\b(check|view|see|status of|track|where is)\\b.*\\b(my|mine|i have)\\b.*\\b(status|application|case|claim|payment|benefit|account|order|file|form)\\b",
+    "\\b(update|change|reset|edit|modify)\\b.*\\b(my|mine)\\b.*\\b(info|information|address|phone|email|bank|direct deposit|account)\\b",
+    "\\b(submit|send|file|upload)\\b.*\\b(my|the)\\b.*\\b(form|document|file|application)\\b.*\\b(for me|on my behalf)\\b"
+  ]
+
+# Quality Rubric Weights (Neural-Weighted)
+weight_supported: 0.3
+weight_length: 0.1
+weight_fragment: 0.1
+weight_grammar: 0.1
+weight_repetition: 0.1
+weight_direct: 0.15
+weight_domain: 0.15
