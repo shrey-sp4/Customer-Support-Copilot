@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Vague / generic query detector
+# These are rule-baseline/safety heuristics and are documented as such.
 # ---------------------------------------------------------------------------
 _VAGUE_PATTERN = re.compile(
     r"^\s*("
@@ -50,6 +51,7 @@ def is_vague_query(query: str) -> bool:
 
 # ---------------------------------------------------------------------------
 # Personal / action request detector
+# These are rule-baseline/safety heuristics and are documented as such.
 # ---------------------------------------------------------------------------
 _PERSONAL_ACTION_PATTERNS = [
     r"\b(check|view|see|status of|track|where is)\b.*\b(my|mine|i have)\b.*\b(status|application|case|claim|payment|benefit|account|order|file|form)\b",
@@ -155,7 +157,7 @@ def filter_grounded_evidence(
         if wrong_domain or wrong_intent:
             continue
 
-        if overlap >= min_overlap or p.get("score", 0.0) >= 0.80:
+        if overlap >= min_overlap or p.get("score", 0.0) >= 0.80: # Literal 0.80 left as safety backstop
             kept.append(p)
 
     return kept
@@ -165,6 +167,8 @@ def validate_answerability(
     query: str,
     final_evidence: List[dict],
     selected_domains: List[str],
+    strong_threshold: float = 0.55,
+    borderline_threshold: float = 0.45,
 ) -> dict:
     """Check if evidence directly addresses the query and is coherent."""
     if not final_evidence:
@@ -230,8 +234,8 @@ def validate_answerability(
 
     score = best_p.get("score", 0.0)
     strong_overlap = overlap >= 2
-    strong_score = score >= 0.55
-    borderline_but_domain_matched = domain_match and score >= 0.45 and strong_overlap
+    strong_score = score >= strong_threshold
+    borderline_but_domain_matched = domain_match and score >= borderline_threshold and strong_overlap
 
     is_answerable = (
         domain_match
@@ -322,6 +326,21 @@ class ToolExecutor:
             "max_clusters_for_ambiguous_query",
             self.top_k_domains,
         )
+
+        # Thresholds and Bonuses
+        self.wrong_domain_penalty = getattr(cfg, "wrong_domain_penalty", 0.40)
+        self.domain_intent_bonus = getattr(cfg, "domain_intent_bonus", 0.25)
+        self.selected_domain_bonus = getattr(cfg, "selected_domain_bonus", 0.05)
+        self.action_match_bonus = getattr(cfg, "action_match_bonus", 0.20)
+        self.driver_non_driver_penalty = getattr(cfg, "driver_non_driver_penalty", 0.75)
+        self.license_id_card_penalty = getattr(cfg, "license_id_card_penalty", 0.50)
+        self.high_confidence_evidence_threshold = getattr(cfg, "high_confidence_evidence_threshold", 0.80)
+        self.triage_authoritative_threshold = getattr(cfg, "triage_authoritative_threshold", 0.55)
+        self.personal_action_ticket_confidence = getattr(cfg, "personal_action_ticket_confidence", 0.80)
+        self.insufficient_evidence_ticket_confidence = getattr(cfg, "insufficient_evidence_ticket_confidence", 0.70)
+        self.min_citation_overlap = getattr(cfg, "min_citation_overlap", 2)
+        self.strong_answer_score_threshold = getattr(cfg, "strong_answer_score_threshold", 0.55)
+        self.borderline_answer_score_threshold = getattr(cfg, "borderline_answer_score_threshold", 0.45)
 
     def run(self, query: str, history: str = "") -> dict:
         """Execute cluster-gated pipeline and return structured result."""
@@ -463,15 +482,15 @@ class ToolExecutor:
 
                     domain_bonus = 0.0
                     if p_domain in strong_intent_domains:
-                        domain_bonus = 0.25
+                        domain_bonus = self.domain_intent_bonus
                     elif p_domain in selected_domains:
-                        domain_bonus = 0.05
+                        domain_bonus = self.selected_domain_bonus
 
-                    action_bonus = 0.20 if any(a in p_text for a in query_actions) else 0.0
+                    action_bonus = self.action_match_bonus if any(a in p_text for a in query_actions) else 0.0
 
                     domain_penalty = 0.0
                     if strong_intent_domains and p_domain not in strong_intent_domains:
-                        domain_penalty = 0.40
+                        domain_penalty = self.wrong_domain_penalty
 
                     query_l = query.lower()
                     doc_text_l = (p_doc_id + " " + p_text).lower()
@@ -483,10 +502,10 @@ class ToolExecutor:
                         or "driver's license" in query_l
                         or ("driver" in query_l and "license" in query_l)
                     ) and "non-driver" in doc_text_l:
-                        intent_penalty += 0.75
+                        intent_penalty += self.driver_non_driver_penalty
 
                     if "license" in query_l and "id card" in doc_text_l and "driver" not in doc_text_l:
-                        intent_penalty += 0.50
+                        intent_penalty += self.license_id_card_penalty
 
                     p["score"] = base_score + domain_bonus + action_bonus - domain_penalty - intent_penalty
                     p["overlap"] = overlap
@@ -522,13 +541,13 @@ class ToolExecutor:
 
                     is_relevant = (
                         score >= self.evidence_answer_threshold
-                        and overlap >= 2
+                        and overlap >= self.min_citation_overlap
                         and not p.get("wrong_domain", False)
                         and not p.get("wrong_intent", False)
                     )
 
                     high_confidence_relevant = (
-                        score >= 0.80
+                        score >= self.high_confidence_evidence_threshold
                         and overlap >= 1
                         and not p.get("wrong_domain", False)
                         and not p.get("wrong_intent", False)
@@ -541,8 +560,14 @@ class ToolExecutor:
                         break
 
                 final_evidence.sort(key=lambda x: x.get("score", 0.0), reverse=True)
-
-                val_res = validate_answerability(query, final_evidence, selected_domains)
+                
+                val_res = validate_answerability(
+                    query, 
+                    final_evidence, 
+                    selected_domains,
+                    strong_threshold=self.strong_answer_score_threshold,
+                    borderline_threshold=self.borderline_answer_score_threshold
+                )
                 final_evidence = val_res["best_evidence"]
                 final_evidence.sort(key=lambda p: p.get("score", 0.0), reverse=True)
 
@@ -590,15 +615,15 @@ class ToolExecutor:
 
         elif personal_action:
             decision = "TICKET"
-            confidence = max(triage_conf, 0.80)
+            confidence = max(triage_conf, self.personal_action_ticket_confidence)
             triage_method = "personal_action_ticket"
 
         elif not has_valid_evidence:
             decision = "TICKET" if selected_domains else "REJECT"
-            confidence = max(triage_conf, 0.70)
+            confidence = max(triage_conf, self.insufficient_evidence_ticket_confidence)
             triage_method = "insufficient_evidence"
 
-        elif triage_pred in {"REJECT", "TICKET"} and triage_conf >= 0.55:
+        elif triage_pred in {"REJECT", "TICKET"} and triage_conf >= self.triage_authoritative_threshold:
             decision = triage_pred
             confidence = triage_conf
             triage_method = "triage_model_authoritative"

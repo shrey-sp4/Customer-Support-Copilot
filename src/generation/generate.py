@@ -304,6 +304,7 @@ class FlanT5Generator:
         max_new_tokens: int = 120,
         num_beams: int = 4,
         temperature: float = 0.0,
+        tokenizer_max_length: int = 768,
     ):
         from transformers import T5ForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig
         if device is None:
@@ -313,6 +314,7 @@ class FlanT5Generator:
         self.max_new_tokens = max_new_tokens
         self.num_beams       = num_beams
         self.temperature    = temperature
+        self.tokenizer_max_length = tokenizer_max_length
 
         # 4-bit configuration for hardware efficiency (as per README)
         bnb_config = None
@@ -355,7 +357,7 @@ class FlanT5Generator:
         """Generate answer candidates from a prompt."""
         enc = self.tokenizer(
             prompt,
-            max_length=768,
+            max_length=self.tokenizer_max_length,
             truncation=True,
             return_tensors="pt",
         )
@@ -396,6 +398,7 @@ def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[F
             max_new_tokens=cfg.get("generator_max_new_tokens", 120),
             num_beams=cfg.get("generator_num_beams", 4),
             temperature=cfg.get("generator_temperature", 0.0),
+            tokenizer_max_length=cfg.get("generator_tokenizer_max_length", 768),
         )
     except Exception as e:
         err_msg = str(e).split("\n")[0]
@@ -407,6 +410,7 @@ def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[F
                 max_new_tokens=cfg.get("generator_max_new_tokens", 120),
                 num_beams=cfg.get("generator_num_beams", 4),
                 temperature=cfg.get("generator_temperature", 0.0),
+                tokenizer_max_length=cfg.get("generator_tokenizer_max_length", 768),
             )
         except Exception as e2:
             err_msg2 = str(e2).split("\n")[0]

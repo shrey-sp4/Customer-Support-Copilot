@@ -2,7 +2,7 @@ import re
 import numpy as np
 from typing import List, Dict
 
-def compute_answer_quality_metrics(results: List[dict]) -> dict:
+def compute_answer_quality_metrics(results: List[dict], cfg: dict = None) -> dict:
     """
     Compute automated quality metrics for ANSWER predictions.
     
@@ -34,6 +34,19 @@ def compute_answer_quality_metrics(results: List[dict]) -> dict:
     incoherent = []
     rubric_scores = []
 
+    # Rubric Weights from config
+    w_supp  = getattr(cfg, "weight_supported", 0.2)
+    w_len   = getattr(cfg, "weight_length", 0.1)
+    w_frag  = getattr(cfg, "weight_fragment", 0.1)
+    w_gram  = getattr(cfg, "weight_grammar", 0.1)
+    w_rep   = getattr(cfg, "weight_repetition", 0.1)
+    w_dir   = getattr(cfg, "weight_direct", 0.2)
+    w_dom   = getattr(cfg, "weight_domain", 0.2)
+    
+    # Thresholds from config
+    max_ans_len = getattr(cfg, "max_answer_length", 150)
+    rep_min_len = getattr(cfg, "repetition_min_length", 20)
+
     bad_punct_pattern = re.compile(r"\b(it s|you ll|don t|can t|Labor s|Department s|government s|religious or|they re|i m)\b", re.IGNORECASE)
     action_terms = {"renew", "apply", "update", "check", "submit", "eligibility", "documents", "contact", "status"}
 
@@ -52,8 +65,8 @@ def compute_answer_quality_metrics(results: List[dict]) -> dict:
         length = len(words)
         lengths.append(length)
         
-        # 3. Too long (>150 words)
-        is_too_long = 1 if length > 150 else 0
+        # 3. Too long
+        is_too_long = 1 if length > max_ans_len else 0
         too_long.append(is_too_long)
         
         # 4. Fragment rate
@@ -92,7 +105,7 @@ def compute_answer_quality_metrics(results: List[dict]) -> dict:
             seen = set()
             for s in sentences:
                 s_clean = s.strip().lower()
-                if s_clean in seen and len(s_clean) > 20:
+                if s_clean in seen and len(s_clean) > rep_min_len:
                     has_repetition = 1
                     break
                 seen.add(s_clean)
@@ -121,17 +134,15 @@ def compute_answer_quality_metrics(results: List[dict]) -> dict:
                 is_incoherent = 1
         incoherent.append(is_incoherent)
 
-        # 11. Rubric Score (0 to 1)
-        # Weights: supported(0.2), not_too_long(0.1), no_fragment(0.1), no_bad_grammar(0.1), 
-        # no_repetition(0.1), direct_answer(0.2), right_domain(0.2)
+        # Rubric Score (0 to 1)
         score = 0
-        if not is_unsupported: score += 0.2
-        if not is_too_long: score += 0.1
-        if not is_fragment: score += 0.1
-        if not has_bad_grammar: score += 0.1
-        if not has_repetition: score += 0.1
-        if is_direct: score += 0.2
-        if not is_wrong_domain: score += 0.2
+        if not is_unsupported: score += w_supp
+        if not is_too_long: score += w_len
+        if not is_fragment: score += w_frag
+        if not has_bad_grammar: score += w_gram
+        if not has_repetition: score += w_rep
+        if is_direct: score += w_dir
+        if not is_wrong_domain: score += w_dom
         rubric_scores.append(score)
 
     return {
@@ -140,10 +151,8 @@ def compute_answer_quality_metrics(results: List[dict]) -> dict:
         "FragmentRate": np.mean(fragments),
         "RepetitionRate": np.mean(repetition),
         "BadGrammarRate": np.mean(bad_grammar),
-        "WrongDomainCitationRate": np.mean(wrong_domain),
         "IncoherentMultiEvidenceRate": np.mean(incoherent),
         "AnswerTooLongRate": np.mean(too_long),
         "AnswerHasCitationRate": np.mean(has_citations),
-        "UnsupportedAnswerRate": np.mean(unsupported),
         "avg_answer_length": np.mean(lengths)
     }

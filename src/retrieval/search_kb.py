@@ -20,14 +20,17 @@ class KBSearcher:
         kb_path: str,
         encoder,
         domain_indexes_dir: Optional[str] = None,
+        global_domain_filter_multiplier: int = 10,
     ):
-        from src.retrieval.build_faiss import load_faiss_index
+        from src.retrieval.build_faiss import load_faiss_index, normalize_domain_name
         from src.utils.io import read_jsonl
 
         self.encoder = encoder
         self.kb_path = kb_path
         self.index_dir = index_dir
         self.domain_indexes_dir = domain_indexes_dir
+        self.global_domain_filter_multiplier = global_domain_filter_multiplier
+        self.normalize_domain_name = normalize_domain_name
         
         # Load global index
         self.index, self.chunk_ids = load_faiss_index(index_dir)
@@ -87,7 +90,7 @@ class KBSearcher:
 
     def _search_global(self, q_emb: np.ndarray, top_k: int, domain_filter: Optional[str | List[str]]) -> List[dict]:
         # Retrieve more than top_k to allow domain filtering if domain_filter is metadata-only
-        search_k = min(top_k * 10, self.index.ntotal) if domain_filter else top_k
+        search_k = min(top_k * self.global_domain_filter_multiplier, self.index.ntotal) if domain_filter else top_k
         scores, indices = self.index.search(q_emb, search_k)
         
         domains_to_filter = [domain_filter] if isinstance(domain_filter, str) else domain_filter
@@ -107,6 +110,7 @@ class KBSearcher:
         all_results = []
         
         for dom in domains:
+            dom = self.normalize_domain_name(dom)
             idx, ids = self._get_domain_index(dom)
             if idx is None: continue
             
@@ -122,6 +126,7 @@ class KBSearcher:
         return all_results[:top_k]
 
     def _get_domain_index(self, domain: str):
+        domain = self.normalize_domain_name(domain)
         if domain in self._domain_indexes:
             return self._domain_indexes[domain]
         
@@ -165,6 +170,7 @@ def load_searcher(
     kb_path: str,
     encoder,
     domain_indexes_dir: Optional[str] = None,
+    global_domain_filter_multiplier: int = 10,
 ) -> KBSearcher:
     """Load FAISS index, chunk map, and return a KBSearcher."""
-    return KBSearcher(index_dir, kb_path, encoder, domain_indexes_dir)
+    return KBSearcher(index_dir, kb_path, encoder, domain_indexes_dir, global_domain_filter_multiplier)

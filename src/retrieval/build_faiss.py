@@ -21,6 +21,28 @@ from src.utils.device import get_device
 logger = get_logger(__name__)
 
 
+def normalize_domain_name(domain: str) -> str:
+    """Dataset-specific canonicalization for the four support domains.
+    
+    student_aid/student aid/federal_student_aid -> studentaid
+    social_security -> ssa
+    veterans_affairs -> va
+    motor_vehicle/department_of_motor_vehicles -> dmv
+    """
+    d = (domain or "").lower().strip().replace(" ", "_").replace("-", "_")
+    
+    if d in {"student_aid", "student_aid", "federal_student_aid", "studentaid"}:
+        return "studentaid"
+    if d in {"social_security", "ssa"}:
+        return "ssa"
+    if d in {"veterans_affairs", "va"}:
+        return "va"
+    if d in {"motor_vehicle", "department_of_motor_vehicles", "dmv"}:
+        return "dmv"
+    
+    return d
+
+
 def build_faiss_index(
     kb_chunks: List[dict],
     encoder,
@@ -91,6 +113,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_chunks", type=int, default=None)
     parser.add_argument("--device",     default="auto")
+    
+    # New arguments to match high-level script
+    parser.add_argument("--raw_index_dir",      default="data/indexes_raw")
+    parser.add_argument("--domain_indexes_dir", default="data/indexes_by_domain")
+    parser.add_argument("--raw_model",          default="sentence-transformers/all-MiniLM-L6-v2")
+    
     args = parser.parse_args()
 
     from sentence_transformers import SentenceTransformer
@@ -101,11 +129,11 @@ if __name__ == "__main__":
     target_dir = args.index_dir
     
     if args.mode == "raw":
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        target_dir = "data/indexes_raw"
+        model_name = args.raw_model
+        target_dir = args.raw_index_dir
         logger.info(f"Building RAW baseline index using {model_name}")
     elif args.mode == "domain":
-        target_dir = "data/indexes_by_domain"
+        target_dir = args.domain_indexes_dir
         logger.info(f"Building DOMAIN-specific indexes in {target_dir}")
     else:
         logger.info(f"Building GLOBAL index in {target_dir} using {model_name}")

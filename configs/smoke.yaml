@@ -25,47 +25,58 @@ fp16: true
 
 # Paths
 output_dir: outputs
-data_dir: data/sample
-index_dir: data/smoke_indexes/global
-raw_index_dir: data/smoke_indexes/raw
-domain_indexes_dir: data/smoke_indexes/domain
-eval_file: eval_set.jsonl
+data_dir: data/processed
+index_dir: data/indexes
+raw_index_dir: data/indexes_raw
+domain_indexes_dir: data/indexes_by_domain
+eval_file: balanced_eval.jsonl
+reports_dir: outputs/reports
 
 # Retrieval
 top_k_retrieval: 10
 top_k_rerank: 3
 top_k_domains: 2
+global_domain_filter_multiplier: 10
 
 # Triage loss
 mu_boundary: 0.15
 lambda_boundary: 0.6
 
-# Domain routing thresholds
-# Slightly stricter than before to reduce false accepts.
+# Routing/Triage Thresholds
 tau_domain: 0.35
 tau_chunk: 0.50
-
-# Cluster-gated retrieval thresholds
+tau_hard_reject: 0.08
+tau_soft_domain: 0.20
 cluster_out_of_domain_threshold: 0.35
 cluster_confident_margin: 0.10
 cluster_ambiguous_top_k: 2
-
-# Evidence thresholds
-# Raised answer threshold to reduce answering on weak/irrelevant evidence.
-evidence_answer_threshold: 0.55
-evidence_ticket_threshold: 0.25
-
 max_clusters_for_confident_query: 1
 max_clusters_for_ambiguous_query: 2
 
-# Model paths
+# Evidence Logic
+evidence_answer_threshold: 0.55
+evidence_ticket_threshold: 0.25
+high_confidence_evidence_threshold: 0.80
+strong_answer_score_threshold: 0.55
+borderline_answer_score_threshold: 0.45
+min_citation_overlap: 2
+wrong_domain_penalty: 0.40
+domain_intent_bonus: 0.25
+selected_domain_bonus: 0.05
+action_match_bonus: 0.20
+driver_non_driver_penalty: 0.75
+license_id_card_penalty: 0.50
+
+# Triage Decision Thresholds
+triage_authoritative_threshold: 0.55
+personal_action_ticket_confidence: 0.80
+insufficient_evidence_ticket_confidence: 0.70
+
+# Model paths/names
 raw_retriever_model: sentence-transformers/all-MiniLM-L6-v2
 retriever_model: sentence-transformers/all-MiniLM-L6-v2
 reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
 triage_model: distilbert-base-uncased
-
-# Flan-T5 large is heavy and can behave poorly in smoke mode.
-# Base is more stable for local/Kaggle testing.
 generator_model: google/flan-t5-base
 generator_fallback_model_name: google/flan-t5-small
 
@@ -73,3 +84,23 @@ generator_fallback_model_name: google/flan-t5-small
 generator_max_new_tokens: 120
 generator_num_beams: 4
 generator_temperature: 0.0
+generator_tokenizer_max_length: 768
+
+# Evaluation settings
+retrieval_eval_top_k: 5
+mrr_k: 10
+ndcg_k: 10
+tbp_mu_values: [0.10, 0.15, 0.20]
+
+# Quality Rubric Weights
+weight_supported: 0.2
+weight_length: 0.1
+weight_fragment: 0.1
+weight_grammar: 0.1
+weight_repetition: 0.1
+weight_direct: 0.2
+weight_domain: 0.2
+
+# Quality Thresholds
+max_answer_length: 150
+repetition_min_length: 20
