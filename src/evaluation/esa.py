@@ -11,9 +11,20 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 class ESACalculator:
-    def __init__(self, model_path: str, kb_path: str, device: str = "cpu"):
+    def __init__(
+        self, 
+        model_path: str, 
+        kb_path: str, 
+        device: str = "cpu",
+        tau_qc: float = 0.35,
+        tau_ac: float = 0.40,
+        tau_qa: float = 0.30
+    ):
         self.device = device
         self.model = SentenceTransformer(model_path, device=device)
+        self.tau_qc = tau_qc
+        self.tau_ac = tau_ac
+        self.tau_qa = tau_qa
         
         logger.info(f"Loading KB for ESA from {kb_path}")
         kb_chunks = read_jsonl(kb_path)
@@ -102,17 +113,17 @@ class ESACalculator:
             pass_all = True
             
             # Condition 3: Relevance to query
-            if q_c_sim < 0.35:
+            if q_c_sim < self.tau_qc:
                 row["esa_failure_reason"] = "citation_not_relevant_to_query"
                 pass_all = False
             
             # Condition 4: Answer supported by citation
-            elif a_c_sim < 0.40:
+            elif a_c_sim < self.tau_ac:
                 row["esa_failure_reason"] = "answer_not_supported_by_citation"
                 pass_all = False
                 
             # Condition 5: Answer direct to query
-            elif q_a_sim < 0.30:
+            elif q_a_sim < self.tau_qa:
                 row["esa_failure_reason"] = "answer_not_direct_to_query"
                 pass_all = False
                 

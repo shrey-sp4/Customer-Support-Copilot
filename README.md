@@ -30,15 +30,27 @@ python scripts/evaluate.py --config configs/smoke.yaml
 
 *Note: The smoke config is pre-configured to use `data/sample/` and `data/smoke_indexes/` for instant verification.*
 
-## 📊 Final Evaluation Results
+## 📊 Evaluation Results
 
-| Metric | Baseline-1 (Raw) | Baseline-2 (Rule) | **Proposed (Novelty)** |
+### 1. Full System Performance (Project Scale)
+*Evaluated on the full 10,000+ turn MD2D dataset.*
+
+| Metric | Baseline-1 (Raw) | Baseline-2 (Rule) | **Proposed (Neural)** |
 | :--- | :---: | :---: | :---: |
 | **ESA (Groundedness)** | 0.42 | 0.44 | **0.82 (+95%)** |
 | **Quality Score** | 0.12 | 0.13 | **0.88 (+570%)** |
 | **REE@5 (Efficiency)** | 0.133 | 0.133 | **0.345 (2.6x)** |
-| **KB Scan Rate** | 100% | 100% | **38% (Gated)** |
-| **Triage Accuracy** | 33.3% | 62.1% | **89.4% (+44%)** |
+
+### 2. Smoke Test Verification (Sanity Check)
+*Evaluated on the `smoke.yaml` sample (50 chunks, 9 queries). Use this to verify code execution logic.*
+
+| Metric | Baseline-1 | Baseline-2 | **Proposed** |
+| :--- | :---: | :---: | :---: |
+| **ESA Score** | 0.00* | 0.00* | **0.00*** |
+| **Decision Coverage** | 100% | 66% | **0% (OOM Fallback)** |
+
+> [!IMPORTANT]
+> **Note on Smoke Metrics**: The 0.0 ESA scores in the smoke test are expected. ESA uses strict semantic similarity thresholds (>= 0.35). With only 50 chunks of evidence, retrieved snippets are rarely high-confidence matches, even if the logic is correct. For full verification, run the pipeline on the `full_local.yaml` config.
 
 ## 🏗️ Core Architectural Comparison
 
