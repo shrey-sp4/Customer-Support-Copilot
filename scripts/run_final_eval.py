@@ -157,7 +157,9 @@ def main():
     router = load_router(os.path.join(data_dir, "domain_centroids.json"), os.path.join(data_dir, "domain_keywords.json"))
     triage = load_predictor(os.path.join(output_dir, "triage"), device=device)
     reranker = load_reranker(os.path.join(output_dir, "reranker"), device=device)
-    gen_path   = os.path.join(output_dir, "generator")
+    # Corrected paths to match training outputs
+    gen_path   = os.path.join(output_dir, "generator_lora")
+    pref_path  = os.path.join(output_dir, "preference_dpo")
     if not os.path.isdir(gen_path):
         gen_path = None
     generator = load_generator(gen_path, device=device, cfg=cfg)
@@ -191,7 +193,10 @@ def main():
     # Final report
     df_metrics = pd.DataFrame(all_metrics)
     print("\n=== FINAL METRICS SUMMARY ===")
-    print(df_metrics[["system", "accuracy", "macro_f1", "evidence_hit_at_5", "ree_at_5", "avg_latency"]])
+    cols = ["system", "accuracy", "macro_f1", "recall_at_1", "recall_at_3", "evidence_hit_at_5", "ree_at_5", "avg_latency"]
+    # Filter columns that exist
+    cols = [c for c in cols if c in df_metrics.columns]
+    print(df_metrics[cols])
     
     df_metrics.to_csv(os.path.join(report_dir, "final_results.csv"), index=False)
     write_json(all_metrics, os.path.join(report_dir, "final_metrics.json"))
