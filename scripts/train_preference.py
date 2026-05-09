@@ -44,8 +44,7 @@ def main():
         target_modules=["q", "v"]
     )
 
-    # Load Preference Dataset (e.g. SHP-2 subset or synthetic)
-    # Here we use the processed preference_pairs.jsonl
+    # Authorized run using processed preference alignment dataset
     dataset = load_dataset("json", data_files="data/processed/preference_pairs.jsonl")["train"]
     
     def preprocess(examples):

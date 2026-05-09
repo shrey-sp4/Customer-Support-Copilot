@@ -72,12 +72,13 @@ triage_authoritative_threshold: 0.55
 personal_action_ticket_confidence: 0.80
 insufficient_evidence_ticket_confidence: 0.70
 
-# Model paths/names
-raw_retriever_model: sentence-transformers/all-MiniLM-L6-v2
-retriever_model: sentence-transformers/all-MiniLM-L6-v2
-reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
-triage_model: distilbert-base-uncased
+# Model paths/names (Authorized Training Artifacts)
+retriever_model: outputs/retriever
+reranker_model: outputs/reranker
+triage_model: outputs/triage
 generator_model: google/flan-t5-base
+generator_lora_path: outputs/generator_lora
+preference_dpo_path: outputs/preference_dpo
 generator_fallback_model_name: google/flan-t5-small
 
 # Generation controls

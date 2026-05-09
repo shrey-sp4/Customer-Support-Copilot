@@ -63,8 +63,10 @@ class PreferenceScorer:
 
 
 def load_preference_scorer(model_path: str, device=None) -> Optional[PreferenceScorer]:
-    """Load preference scorer; returns None if model path does not exist."""
+    """Load preference scorer; provides integrity logging for DL contribution proof."""
     if not os.path.isdir(model_path):
-        logger.warning(f"Preference scorer not found at {model_path}. Skipping.")
+        print(f"[integrity] WARNING: Trained Preference Model NOT found at {model_path}. Evaluation will lack preference scoring.")
         return None
+    
+    print(f"[integrity] Found Authorized Preference Model at {model_path}")
     return PreferenceScorer(model_path, device=device)

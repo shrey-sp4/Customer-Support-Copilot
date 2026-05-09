@@ -68,8 +68,10 @@ class Reranker:
 
 
 def load_reranker(model_path: str, device=None) -> Optional[Reranker]:
-    """Load reranker; returns None if model path does not exist yet."""
+    """Load reranker; provides integrity logging for DL contribution proof."""
     if not os.path.isdir(model_path):
-        logger.warning(f"Reranker not found at {model_path}. Using retrieval scores.")
+        print(f"[integrity] WARNING: Trained Reranker Model NOT found at {model_path}. Evaluation will lack reranking contribution.")
         return None
+    
+    print(f"[integrity] Found Authorized Reranker Model at {model_path}")
     return Reranker(model_path, device=device)

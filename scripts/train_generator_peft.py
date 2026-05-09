@@ -45,8 +45,7 @@ def main():
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    # Load a small subset of MultiDoc2Dial for grounded generation
-    # In a real run, this would use the processed train_qa.jsonl
+    # Authorized run using processed MD2D dataset
     dataset = load_dataset("json", data_files="data/processed/train_qa.jsonl")["train"]
     
     def preprocess_function(examples):

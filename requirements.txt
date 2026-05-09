@@ -5,6 +5,7 @@ sentence-transformers>=2.2.2
 datasets==2.19.1
 peft>=0.6.0
 accelerate>=0.24.0
+trl>=0.8.0
 
 # FAISS (CPU build — GPU build optional, comment out cpu if using GPU build)
 faiss-cpu>=1.7.4

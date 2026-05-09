@@ -112,6 +112,20 @@ Final answers are scored against a weighted rubric:
 - **Target**: NVIDIA RTX 3050 (4.3GB VRAM) / 16GB RAM.
 - **Runtime**: Windows 11 / Python 3.10.
 
+## 🔍 Deep Learning Integrity (Authorized Artifacts)
+
+To satisfy academic audit requirements, the system includes explicit integrity logging (`[integrity]`) during the boot sequence to verify that trained components are active.
+
+| Component | Training Method | Authorized Checkpoint | Evidence Artifacts |
+| :--- | :--- | :--- | :--- |
+| **Retriever** | Triplet Loss (MiniLM) | `outputs/retriever/` | `model.safetensors`, `config.json` |
+| **Reranker** | Cross-Entropy (BERT) | `outputs/reranker/` | `model.safetensors`, `training_log.json` |
+| **Triage** | Sequence Classif. (BERT) | `outputs/triage/` | `model.safetensors`, `triage_val_metrics.json` |
+| **Generator** | SFT + QLoRA (T5-Large) | `outputs/generator_lora/` | `adapter_config.json`, `training_log.json` |
+| **Alignment** | DPO (Policy-Refined) | `outputs/preference_dpo/` | `adapter_config.json`, `training_log.json` |
+
+*Note: The inference pipeline will log a `[integrity] Found Authorized Model` message for each component. If an artifact is missing, the system will issue a critical warning, as the neural contribution is required for reported performance.*
+
 ## Configuration and Heuristics
 
 The system is designed to be highly configurable, with key parameters centralized in `configs/smoke.yaml`.

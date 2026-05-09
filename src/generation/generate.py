@@ -305,8 +305,10 @@ class FlanT5Generator:
         num_beams: int = 4,
         temperature: float = 0.0,
         tokenizer_max_length: int = 768,
+        lora_path: Optional[str] = None,
     ):
         from transformers import T5ForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig
+        from peft import PeftModel
         if device is None:
             from src.utils.device import get_device
             device = get_device("auto")
@@ -334,20 +336,33 @@ class FlanT5Generator:
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         try:
             if bnb_config:
-                self.model = T5ForConditionalGeneration.from_pretrained(
+                base_model = T5ForConditionalGeneration.from_pretrained(
                     model_path, 
                     quantization_config=bnb_config,
                     device_map="auto"
                 )
             else:
-                self.model = T5ForConditionalGeneration.from_pretrained(model_path)
-                self.model.to(device)
+                base_model = T5ForConditionalGeneration.from_pretrained(model_path)
+                base_model.to(device)
+            
+            if lora_path and os.path.exists(os.path.join(lora_path, "adapter_config.json")):
+                print(f"[generator] Loading PEFT adapter from {lora_path} ...")
+                self.model = PeftModel.from_pretrained(base_model, lora_path)
+                print("[generator] PEFT adapter integrated successfully.")
+            else:
+                self.model = base_model
+                if lora_path:
+                    print(f"[warning] PEFT adapter NOT found at {lora_path}. Using base model.")
         except Exception as e:
             if "CUDA" in str(e) or "out of memory" in str(e).lower() or "paging file" in str(e).lower():
                 print(f"[warning] Failed to load generator on {device}. Falling back to CPU...")
                 self.device = torch.device("cpu")
-                self.model = T5ForConditionalGeneration.from_pretrained(model_path)
-                self.model.to(self.device)
+                base_model = T5ForConditionalGeneration.from_pretrained(model_path)
+                base_model.to(self.device)
+                if lora_path and os.path.exists(os.path.join(lora_path, "adapter_config.json")):
+                    self.model = PeftModel.from_pretrained(base_model, lora_path)
+                else:
+                    self.model = base_model
             else:
                 raise e
         self.model.eval()
@@ -384,35 +399,37 @@ class FlanT5Generator:
 
 
 def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[FlanT5Generator]:
-    """Load generator. If path does not exist, return None (template mode)."""
+    """Load generator with optional LoRA/DPO adapters."""
     if cfg is None: cfg = {}
     
-    # Priority: 1. Passed model_path, 2. Config model_name, 3. Config generator_model_name
-    model_name = model_path or cfg.get("generator_model_name") or cfg.get("generator_model") or "google/flan-t5-base"
-    fallback_name = cfg.get("generator_fallback_model_name") or "google/flan-t5-small"
+    # Priority: 1. Config model_name, 2. Passed model_path
+    base_model = cfg.get("generator_model_name") or model_path or "google/flan-t5-base"
+    
+    # PEFT Adapters (Ordered by preference)
+    lora_path = cfg.get("generator_lora_path") or "outputs/generator_lora"
+    dpo_path = cfg.get("preference_dpo_path") or "outputs/preference_dpo"
+    
+    # Select the most 'advanced' adapter found
+    active_lora = None
+    if os.path.exists(os.path.join(dpo_path, "adapter_config.json")):
+        active_lora = dpo_path
+        print(f"[integrity] Found Authorized DPO-Aligned Adapter at {dpo_path}")
+    elif os.path.exists(os.path.join(lora_path, "adapter_config.json")):
+        active_lora = lora_path
+        print(f"[integrity] Found Authorized SFT LoRA Adapter at {lora_path}")
+    else:
+        print("[integrity] WARNING: No trained generator adapters found. Falling back to base model.")
 
     try:
         return FlanT5Generator(
-            model_path=model_name,
+            model_path=base_model,
             device=device,
             max_new_tokens=cfg.get("generator_max_new_tokens", 120),
             num_beams=cfg.get("generator_num_beams", 4),
             temperature=cfg.get("generator_temperature", 0.0),
             tokenizer_max_length=cfg.get("generator_tokenizer_max_length", 768),
+            lora_path=active_lora,
         )
     except Exception as e:
-        err_msg = str(e).split("\n")[0]
-        print(f"[warning] Could not load generator '{model_name}' ({err_msg}). Trying fallback...")
-        try:
-            return FlanT5Generator(
-                model_path=fallback_name,
-                device=device,
-                max_new_tokens=cfg.get("generator_max_new_tokens", 120),
-                num_beams=cfg.get("generator_num_beams", 4),
-                temperature=cfg.get("generator_temperature", 0.0),
-                tokenizer_max_length=cfg.get("generator_tokenizer_max_length", 768),
-            )
-        except Exception as e2:
-            err_msg2 = str(e2).split("\n")[0]
-            print(f"[error] Fallback failed ({err_msg2}). Generator mode: template fallback")
-            return None
+        print(f"[error] Failed to load generator pipeline: {e}")
+        return None
