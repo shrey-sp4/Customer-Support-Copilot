@@ -44,6 +44,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
         routing_results  = []
         retrieval_results = []
         cluster_results  = []
+        gen_meta_results = []
 
         for i, sample in enumerate(eval_set):
             try:
@@ -103,6 +104,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
                     "n_clusters":   result.get("n_clusters", 1),
                     "fraction_kb":  result.get("fraction_kb", 1.0),
                 })
+                gen_meta_results.append(result.get("generation_metadata", {}))
                 if (i+1) % 10 == 0:
                     logger.info(f"  Processed {i+1}/{len(eval_set)} samples...")
             except Exception as e:
@@ -125,6 +127,11 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
         cluster_m       = compute_cluster_metrics(cluster_results)
         quality_m       = compute_answer_quality_metrics(all_results, cfg=cfg)
         grounding_m     = grounded_answer_rate(all_results) # Final authority on grounding & decisions
+        
+        # Neural Gen Metrics
+        neural_attempts = [m for m in gen_meta_results if m.get("source") != "unknown"]
+        neural_successes = [m for m in neural_attempts if m.get("neural", False)]
+        neural_gen_rate = len(neural_successes) / len(neural_attempts) if neural_attempts else 0.0
 
         # REE@5
         avg_fraction = cluster_m.get("AvgFractionKBScanned", 1.0)
@@ -141,6 +148,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
             **quality_m,
             **triage_m,
             **grounding_m,
+            "NeuralGenRate": neural_gen_rate,
             "REE@5":    ree,
         }
     except Exception as e:

@@ -336,6 +336,7 @@ class ToolExecutor:
         citations = []
         confidence = 0.0
         triage_method = "unknown"
+        result_metadata = {"source": "unknown", "neural": False}
 
         # ------------------------------------------------------------------
         # Step 1: Encode query and RouteDomain
@@ -688,20 +689,24 @@ class ToolExecutor:
                 tool_trace.append(pol_res)
 
                 t_gen_start = time.time()
-                final_answer, citations, is_insufficient = generate_answer(
+                final_answer, citations, is_insufficient, gen_meta = generate_answer(
                     query=query,
                     passages=final_evidence,
                     generator=self.generator,
                     preference_scorer=self.preference_scorer,
                 )
                 latency_breakdown["gen_ms"] = (time.time() - t_gen_start) * 1000
+                
+                # Track generation source for metrics
+                result_metadata = gen_meta
 
                 if is_insufficient:
                     logger.warning(
                         "[Executor] Generator failed despite validated evidence; "
                         "falling back to template answer."
                     )
-                    final_answer, citations, is_insufficient = template_answer(query, final_evidence)
+                    final_answer, citations, is_insufficient, fb_meta = template_answer(query, final_evidence)
+                    result_metadata = {"source": "hard_fallback_template", "neural": False}
                     decision = "ANSWER"
 
         t_end = time.time()
@@ -722,6 +727,7 @@ class ToolExecutor:
                 if self.router
                 else 1.0
             ),
+            "generation_metadata": result_metadata,
         }
 
 
@@ -750,7 +756,7 @@ class BaselineExecutor:
         search_ms = (time.time() - t_search_start) * 1000
 
         t_gen_start = time.time()
-        final_answer, citations, _ = generate_answer(
+        final_answer, citations, _, gen_meta = generate_answer(
             query,
             results[:self.top_k_rr],
             generator=self.generator,
@@ -787,6 +793,7 @@ class BaselineExecutor:
             },
             "n_clusters": 1,
             "fraction_kb": 1.0,
+            "generation_metadata": gen_meta,
         }
 
 
@@ -851,12 +858,13 @@ class RuleWorkflowExecutor:
 
         else:
             t_gen_start = time.time()
-            final_answer, citations, _ = generate_answer(
+            final_answer, citations, _, gen_meta = generate_answer(
                 query,
                 results[:self.top_k_rr],
                 generator=self.generator,
             )
             latency_breakdown["gen_ms"] = (time.time() - t_gen_start) * 1000
+            result_metadata = gen_meta
 
         latency_ms = (time.time() - t_start) * 1000
 

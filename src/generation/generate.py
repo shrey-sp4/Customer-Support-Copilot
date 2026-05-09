@@ -209,12 +209,13 @@ def generate_answer(
 ) -> Tuple[str, List[str], bool]:
     """
     Generate final cited answer.
-    Returns (answer, citations, is_insufficient).
+    Returns (answer, citations, is_insufficient, metadata).
     """
     citations = extract_citations(passages)
 
     if generator is None:
-        return template_answer(query, passages)
+        ans, cits, insufficient = template_answer(query, passages)
+        return ans, cits, insufficient, {"source": "baseline_template", "neural": False}
 
     # --- Generator-based answer ---
     evidence_text = format_evidence(passages)
@@ -236,15 +237,17 @@ def generate_answer(
         
         if preference_scorer is not None and len(candidates) > 1:
             best = preference_scorer.select_best(query, candidates, passages)
+            print(f"[NeuralGen] DPO-Aligned Selection: Candidate scored best by preference model.")
         else:
             best = candidates[0]
+            print(f"[NeuralGen] Primary neural output selected.")
         return best
 
     best = run_generation(strict=False)
     
     # Retry logic (Part D)
     if not best or "INSUFFICIENT_EVIDENCE" in best or len(best.split()) < 5:
-        logger.info("[Generation] Triggering retry with strict prompt...")
+        print("[NeuralGen] Low-confidence output; triggering retry with strict prompt...")
         best = run_generation(strict=True)
 
     # Final quality gate (Part E)
@@ -268,16 +271,15 @@ def generate_answer(
         # A bad neural generation should fall back to template answer,
         # not trigger ticket creation.
         if passages:
-            logger.warning(
-                "[Generation] Neural generation failed despite available evidence; "
-                "falling back to template answer."
-            )
-            return template_answer(query, passages)
+            print("[NeuralGen] CRITICAL: Neural generation failed quality/grounding check. Falling back to safety template.")
+            ans, cits, insufficient = template_answer(query, passages)
+            return ans, cits, insufficient, {"source": "safety_fallback_template", "neural": False, "reason": grounding_reason if not is_grounded else "quality"}
 
         return (
             "I could not find enough evidence in the knowledge base to answer this query.",
             citations,
-            True
+            True,
+            {"source": "insufficient_evidence", "neural": False}
         )
 
     # Post-process for common tokenizer issues
@@ -291,7 +293,8 @@ def generate_answer(
     if citations and not any(c in best for c in citations):
         best = best.rstrip() + f" {citations[0]}"
 
-    return best, citations, False
+    print(f"[NeuralGen] SUCCESS: Learned generation verified and cited.")
+    return best, citations, False, {"source": "peft_dpo_neural", "neural": True}
 
 
 class FlanT5Generator:
