@@ -102,6 +102,11 @@ account_action:
     "\\b(submit|send|file|upload)\\b.*\\b(my|the)\\b.*\\b(form|document|file|application)\\b.*\\b(for me|on my behalf)\\b"
   ]
 
+semantic_intent_filters:
+  conflicting_pairs:
+    - ["driver license", "non-driver", 0.75]
+    - ["license", "id card", 0.50]
+
 # Quality Rubric Weights (Neural-Weighted)
 weight_supported: 0.3
 weight_length: 0.1
