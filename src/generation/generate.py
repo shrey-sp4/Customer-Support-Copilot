@@ -52,7 +52,6 @@ def clean_text_formatting(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     
     # Remove common incomplete suffixes/broken words
-    text = re.sub(r"\s+(fin|and|or|with|for)\.?$", ".", text, flags=re.IGNORECASE)
     text = re.sub(r"\s*\.\.\.$", ".", text)
     
     return text
@@ -102,10 +101,19 @@ def _extract_clean_sentences(text: str, query: str, max_chars: int = 5000) -> st
     result = " ".join(result_sents).strip()
     
     # Remove broken trailing words or ellipses
-    result = re.sub(r"\s+\w+$", "", result) # drop last word if it's incomplete
-    result = re.sub(r"\s*\.\.\.$", ".", result) # replace trailing ... with .
+    # Remove only obvious broken endings, not every final word.
+    result = re.sub(r"\s*\.\.\.$", ".", result)
+
     if result.endswith(" fin"):
         result = result[:-4] + "."
+
+    # If text ends with an incomplete connector, remove only that connector.
+    result = re.sub(
+        r"\s+(and|or|with|for|to|of|in|on|at|by|from)$",
+        "",
+        result,
+        flags=re.IGNORECASE
+    )
         
     return result
 
@@ -240,10 +248,37 @@ def generate_answer(
         best = run_generation(strict=True)
 
     # Final quality gate (Part E)
+        
     is_grounded, grounding_reason = verify_grounding(best, passages)
-    if not best or "INSUFFICIENT_EVIDENCE" in best or not validate_answer_quality(best, query, citations) or not is_grounded:
-        logger.warning(f"[Generation] Quality/Grounding gate failed. Reason: {grounding_reason if not is_grounded else 'Quality'}. Result: {best[:50]}...")
-        return "I could not generate a high-quality answer from the available evidence.", citations, True
+
+    if (
+        not best
+        or "INSUFFICIENT_EVIDENCE" in best
+        or not validate_answer_quality(best, query, citations)
+        or not is_grounded
+    ):
+        logger.warning(
+            f"[Generation] Quality/Grounding gate failed. "
+            f"Reason: {grounding_reason if not is_grounded else 'Quality'}. "
+            f"Result: {best[:50] if best else 'EMPTY'}..."
+        )
+
+        # Critical fix:
+        # If passages exist, retrieval/evidence worked.
+        # A bad neural generation should fall back to template answer,
+        # not trigger ticket creation.
+        if passages:
+            logger.warning(
+                "[Generation] Neural generation failed despite available evidence; "
+                "falling back to template answer."
+            )
+            return template_answer(query, passages)
+
+        return (
+            "I could not find enough evidence in the knowledge base to answer this query.",
+            citations,
+            True
+        )
 
     # Post-process for common tokenizer issues
     best = clean_text_formatting(best)

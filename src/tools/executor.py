@@ -13,7 +13,7 @@ from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 from src.tools.tools import route_domain, search_kb, get_policy, create_ticket, reject_query
-from src.generation.generate import generate_answer
+from src.generation.generate import generate_answer, template_answer
 from src.generation.templates import format_reject_response, format_ticket_response
 from src.utils.logging import get_logger
 import re
@@ -306,13 +306,31 @@ class ToolExecutor:
                     # 3. Action Match Bonus
                     action_bonus = 0.20 if any(a in p_text for a in query_actions) else 0.0
                     
-                    # 4. Wrong Domain Penalty
+                    # 4. Wrong Domain / Wrong Intent Penalty
                     domain_penalty = 0.0
                     if strong_intent_domains and p_domain not in strong_intent_domains:
                         domain_penalty = 0.40
-                        
-                    p["score"] = base_score + domain_bonus + action_bonus - domain_penalty
+
+                    # Fine-grained intent penalty.
+                    # Example: "driver's license" should not be answered from "non-driver ID card" evidence.
+                    query_l = query.lower()
+                    doc_text_l = (p_doc_id + " " + p_text).lower()
+
+                    intent_penalty = 0.0
+
+                    if (
+                        "driver license" in query_l
+                        or "driver's license" in query_l
+                        or ("driver" in query_l and "license" in query_l)
+                    ) and "non-driver" in doc_text_l:
+                        intent_penalty += 0.75
+
+                    if "license" in query_l and "id card" in doc_text_l and "driver" not in doc_text_l:
+                        intent_penalty += 0.50
+
+                    p["score"] = base_score + domain_bonus + action_bonus - domain_penalty - intent_penalty
                     p["overlap"] = overlap
+                    p["intent_penalty"] = intent_penalty
 
                 # 4a. Rerank if model available
                 if self.reranker:
@@ -414,11 +432,25 @@ class ToolExecutor:
             latency_breakdown["gen_ms"] = (time.time() - t_gen_start) * 1000
             
             if is_insufficient:
-                decision = "TICKET"
-                tkt_result = create_ticket(summary=query, category=selected_domains[0] if selected_domains else "general", severity="medium")
-                tool_trace.append(tkt_result)
-                final_answer = format_ticket_response(tkt_result["result"]["ticket_id"], query)
-                citations  = []
+                # If final_evidence exists, retrieval and validation succeeded.
+                # A generator failure should fall back to template answer, not create a ticket.
+                if final_evidence:
+                    logger.warning(
+                        "[Executor] Generator marked answer insufficient despite validated evidence; "
+                        "using template fallback and keeping decision=ANSWER."
+                    )
+                    final_answer, citations, is_insufficient = template_answer(query, final_evidence)
+                    decision = "ANSWER"
+                else:
+                    decision = "TICKET"
+                    tkt_result = create_ticket(
+                        summary=query,
+                        category=selected_domains[0] if selected_domains else "general",
+                        severity="medium"
+                    )
+                    tool_trace.append(tkt_result)
+                    final_answer = format_ticket_response(tkt_result["result"]["ticket_id"], query)
+                    citations = []
 
         t_end = time.time()
         latency_ms = (t_end - t_start) * 1000
