@@ -142,3 +142,5 @@ To ensure decision-making is data-driven rather than deterministic, the system's
 - **Empirical Optimization**: The script `scripts/optimize_thresholds.py` was used to sweep across `tau_domain`, `tau_chunk`, and `evidence_threshold`. The parameters in `configs/final.yaml` represent the configuration that maximized **Triage Macro-F1** and **Evidence Support Accuracy (ESA)**.
 - **Neural-First Logic**: While heuristics (regex/keywords) provide essential safety guardrails for out-of-domain and personal-action requests, all **Knowledge Decisions** (ANSWER vs. TICKET vs. REJECT) are fundamentally driven by the **BERT Triage Model** and **Embedding Centroid Similarities**.
 - **Evidence Artifact**: Optimization results are documented in `outputs/reports/threshold_optimization_results.csv`.
+
+# Final Verification: 2026-05-09
