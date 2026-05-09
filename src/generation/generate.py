@@ -305,7 +305,7 @@ class FlanT5Generator:
         num_beams: int = 4,
         temperature: float = 0.0,
     ):
-        from transformers import T5ForConditionalGeneration, AutoTokenizer
+        from transformers import T5ForConditionalGeneration, AutoTokenizer, BitsAndBytesConfig
         if device is None:
             from src.utils.device import get_device
             device = get_device("auto")
@@ -314,11 +314,32 @@ class FlanT5Generator:
         self.num_beams       = num_beams
         self.temperature    = temperature
 
+        # 4-bit configuration for hardware efficiency (as per README)
+        bnb_config = None
+        if "cuda" in str(device).lower():
+            try:
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                )
+                print("[generator] 4-bit quantization enabled.")
+            except Exception:
+                print("[generator] bitsandbytes not found or incompatible. Loading in full precision...")
+
         print(f"[generator] Loading {model_path} ...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         try:
-            self.model = T5ForConditionalGeneration.from_pretrained(model_path)
-            self.model.to(device)
+            if bnb_config:
+                self.model = T5ForConditionalGeneration.from_pretrained(
+                    model_path, 
+                    quantization_config=bnb_config,
+                    device_map="auto"
+                )
+            else:
+                self.model = T5ForConditionalGeneration.from_pretrained(model_path)
+                self.model.to(device)
         except Exception as e:
             if "CUDA" in str(e) or "out of memory" in str(e).lower() or "paging file" in str(e).lower():
                 print(f"[warning] Failed to load generator on {device}. Falling back to CPU...")
