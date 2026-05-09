@@ -30,7 +30,8 @@ python scripts/evaluate.py --config configs/smoke.yaml
 
 # 3. Full Research Reproduction (Authoritative - 12+ hours)
 # Runs the full postgraduate research pipeline (Flan-T5 Large, QLoRA, DPO, 5000+ samples).
-# python scripts/evaluate.py --config configs/final.yaml
+# Produces canonical final_metrics.json and final_results.csv.
+python scripts/run_final_eval.py --config configs/final.yaml
 ```
 
 *Note: `configs/smoke.yaml` is optimized for rapid environment verification (CI/CD). For full research results as claimed in the README, use `configs/final.yaml`.*
@@ -136,6 +137,7 @@ To satisfy academic audit requirements, the system includes explicit integrity l
 The system is designed to be highly configurable, with key parameters centralized in `configs/smoke.yaml`.
 
 - **Parameters**: All file paths, model names, retrieval thresholds (Top-K, rerank), and triage decision boundaries are controlled via the configuration file.
+- **Canonical Results**: The final performance audit produces `outputs/reports/final_metrics.json` and `outputs/reports/final_results.csv` as the authoritative record of system behavior.
 - **Heuristics**: Some rule-based safety patterns remain in the code as documented heuristics. These include:
   - **Vague-query detection**: A heuristic to reject queries with no clear support intent (e.g., "hi", "help").
   - **Personal-action detection**: A safety pattern to redirect account-specific requests (e.g., "check my payment") to ticket creation.

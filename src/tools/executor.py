@@ -70,6 +70,7 @@ def filter_grounded_evidence(
     passages: List[dict],
     selected_domains: List[str],
     min_overlap: int = 2,
+    conflicting_pairs: List[list] = None,
 ) -> List[dict]:
     """
     Keep only passages that are in the selected domain and directly overlap the query.
@@ -99,7 +100,6 @@ def filter_grounded_evidence(
         wrong_domain = bool(selected) and p_domain != "unknown" and p_domain not in selected
         
         # Semantic intent filtering uses parameterized conflicting pairs
-        conflicting_pairs = getattr(self, "conflicting_pairs", [])
         wrong_intent = apply_semantic_intent_filters(query, p, conflicting_pairs)
 
         p["citation_domain"] = p_domain
@@ -475,16 +475,10 @@ class ToolExecutor:
                     doc_text_l = (p_doc_id + " " + p_text).lower()
 
                     intent_penalty = 0.0
-
-                    if (
-                        "driver license" in query_l
-                        or "driver's license" in query_l
-                        or ("driver" in query_l and "license" in query_l)
-                    ) and "non-driver" in doc_text_l:
-                        intent_penalty += self.driver_non_driver_penalty
-
-                    if "license" in query_l and "id card" in doc_text_l and "driver" not in doc_text_l:
-                        intent_penalty += self.license_id_card_penalty
+                    if self.conflicting_pairs:
+                        for trigger, target, penalty_val in self.conflicting_pairs:
+                            if trigger in query_l and target in doc_text_l:
+                                intent_penalty += penalty_val
 
                     p["score"] = base_score + domain_bonus + action_bonus - domain_penalty - intent_penalty
                     p["overlap"] = overlap
@@ -512,6 +506,7 @@ class ToolExecutor:
                     passages=passages,
                     selected_domains=selected_domains,
                     min_overlap=2,
+                    conflicting_pairs=self.conflicting_pairs,
                 )
 
                 for p in guarded_passages:

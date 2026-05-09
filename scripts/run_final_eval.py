@@ -193,13 +193,15 @@ def main():
     print("\n=== FINAL METRICS SUMMARY ===")
     print(df_metrics[["system", "accuracy", "macro_f1", "evidence_hit_at_5", "ree_at_5", "avg_latency"]])
     
-    df_metrics.to_csv(os.path.join(report_dir, "final_robust_metrics.csv"), index=False)
+    df_metrics.to_csv(os.path.join(report_dir, "final_results.csv"), index=False)
+    write_json(all_metrics, os.path.join(report_dir, "final_metrics.json"))
     
     # Run Quality Report for Proposed system on Natural set
     if "results_prop" in locals():
         from src.evaluation.quality import compute_answer_quality_metrics
-        quality_metrics = compute_answer_quality_metrics([r["res"] for r in results_prop])
-        write_json(quality_metrics, os.path.join(report_dir, "proposed_quality_metrics.json"))
+        # Pass encoder for Neural Semantic Fidelity
+        quality_metrics = compute_answer_quality_metrics([r["res"] for r in results_prop], encoder=encoder)
+        write_json(quality_metrics, os.path.join(report_dir, "final_quality_metrics.json"))
         
         print("\n=== PROPOSED QUALITY METRICS (NATURAL SET) ===")
         for k, v in quality_metrics.items():

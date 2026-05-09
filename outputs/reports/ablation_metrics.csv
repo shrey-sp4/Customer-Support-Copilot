@@ -1,4 +1,0 @@
-label,EvidenceHit@5,CitationDocPrecision,CitationChunkPrecision,GroundedAnswerRate,UnsupportedAnswerRate,WrongDomainCitationRate,TriageAccuracy,MacroF1,WeightedF1,FalseAcceptRateExplicit,GoldAnswerAnsweredRate,GoldAnswerTicketRate,GoldAnswerRejectRate,FinalAnswerRate,FinalTicketRate,FinalRejectRate,PredictedAnswerCitationRate,DomainAccuracy,DomainRecall@2,AvgLatencyMs,AvgSearch_ms,AvgFractionKBScanned,REE@5
-Baseline-1,0.10,0.40,1.0,1.00,0.0,0.60,0.25,0.13,0.15,1.0,0.10,0.0,0.0,1.0,0.0,0.0,1.0,0.40,0.40,240.2,238.8,1.00,0.10
-Baseline-2,0.10,0.80,0.0,0.35,0.0,0.20,0.45,0.41,0.41,0.0,0.10,0.30,0.0,0.4,0.3,0.3,0.35,0.80,0.80,10.1,10.1,1.00,0.10
-Proposed,0.10,0.65,0.0,0.55,0.0,0.35,0.55,0.50,0.50,0.0,0.10,0.50,0.0,0.6,0.3,0.1,0.55,0.65,0.90,105.7,42.3,0.30,0.33
