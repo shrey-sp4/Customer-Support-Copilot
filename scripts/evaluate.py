@@ -69,9 +69,13 @@ def main():
         baseline_executor = BaselineExecutor(raw_searcher, generator=None, cfg=cfg)
 
         # --- 2. SETUP BASELINE-2 (RULE WORKFLOW) ---
+        safety_cfg = cfg.get("safety_gate", {})
+        ood_patterns = safety_cfg.get("ood_patterns", [])
+        
         router = load_router(
             os.path.join(data_dir, "domain_centroids.json"),
-            os.path.join(data_dir, "domain_keywords.json")
+            os.path.join(data_dir, "domain_keywords.json"),
+            ood_patterns=ood_patterns
         )
         rule_executor = RuleWorkflowExecutor(raw_searcher, router, generator=None, cfg=cfg)
 

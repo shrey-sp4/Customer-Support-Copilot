@@ -93,6 +93,41 @@ mrr_k: 10
 ndcg_k: 10
 tbp_mu_values: [0.10, 0.15, 0.20]
 
+# Safety & Intent Guardrails (Configurable Heuristics)
+safety_gate:
+  ood_patterns: [
+    "\\b(recipe|cook|bake|chef|food|meal|dish|restaurant)\\b",
+    "\\b(ipl|cricket|football|soccer|nba|nfl|sports|match|score|game)\\b",
+    "\\b(netflix|amazon|ebay|paypal|youtube|instagram|facebook|twitter)\\b",
+    "\\b(movie|film|series|show|streaming)\\b",
+    "\\b(joke|meme|riddle|funny|humor)\\b",
+    "\\b(code|programming|python|java|algorithm|software)\\b",
+    "\\b(bitcoin|crypto|ethereum|stock|forex|trading)\\b",
+    "\\b(weather|forecast|temperature|rain|sun)\\b",
+    "\\b(paris|france|london|capital|geography)\\b",
+    "\\b(black hole|quantum|physics|astronomy|space)\\b"
+  ]
+  vague_patterns: [
+    "^\\s*(why am i here|what is this|help me|what should i do|tell me something|explain this|who are you|are you real|what do you do|what can you do|what is your purpose|i don.t know|idk|huh|ok|okay|thanks|thank you|hi+|hey+|hello+|yes|no|sure|maybe|alright|got it|i see)\\s*[.?!]*\\s*$"
+  ]
+
+account_action:
+  patterns: [
+    "\\b(check|view|see|status of|track|where is)\\b.*\\b(my|mine|i have)\\b.*\\b(status|application|case|claim|payment|benefit|account|order|file|form)\\b",
+    "\\b(update|change|reset|edit|modify)\\b.*\\b(my|mine)\\b.*\\b(info|information|address|phone|email|bank|direct deposit|account)\\b",
+    "\\b(submit|send|file|upload)\\b.*\\b(my|the)\\b.*\\b(form|document|file|application)\\b.*\\b(for me|on my behalf)\\b",
+    "\\b(guarantee|promise|assure)\\b.*\\b(approval|acceptance|eligibility|success)\\b",
+    "\\b(my|exact|specific)\\b.*\\b(amount|payment|benefit|check|balance)\\b",
+    "\\b(why|reason)\\b.*\\b(my|mine|i haven't)\\b.*\\b(delayed|late|not received|not arrived|missing)\\b",
+    "\\b(decide|decision|judge|approve)\\b.*\\b(my|this)\\b.*\\b(case|claim|application|request)\\b",
+    "\\b(private|personal|your|my)\\b.*\\b(phone|number|cell|mobile|address|email)\\b"
+  ]
+
+semantic_intent_filters:
+  conflicting_pairs:
+    - ["driver license", "non-driver", 0.75]
+    - ["license", "id card", 0.50]
+
 # Quality Rubric Weights
 weight_supported: 0.2
 weight_length: 0.1

@@ -19,27 +19,14 @@ logger = get_logger(__name__)
 # Lexical gate
 # ---------------------------------------------------------------------------
 
-# Patterns that strongly indicate out-of-domain queries
-OOD_PATTERNS = [
-    r"\b(recipe|cook|bake|chef|food|meal|dish|restaurant)\b",
-    r"\b(ipl|cricket|football|soccer|nba|nfl|sports|match|score|game)\b",
-    r"\b(netflix|amazon|ebay|paypal|youtube|instagram|facebook|twitter)\b",
-    r"\b(movie|film|series|show|streaming)\b",
-    r"\b(joke|meme|riddle|funny|humor)\b",
-    r"\b(code|programming|python|java|algorithm|software)\b",
-    r"\b(bitcoin|crypto|ethereum|stock|forex|trading)\b",
-    r"\b(weather|forecast|temperature|rain|sun)\b",
-    r"\b(paris|france|london|capital|geography)\b",
-    r"\b(black hole|quantum|physics|astronomy|space)\b",
-]
-
-OOD_COMPILED = [re.compile(p, re.IGNORECASE) for p in OOD_PATTERNS]
+# Patterns are loaded from config/OOD_PATTERNS in LexicalGate
 
 class LexicalGate:
     """Phase-1 fast out-of-domain detection using keyword patterns."""
 
-    def __init__(self, domain_keywords: Dict[str, List[str]]):
+    def __init__(self, domain_keywords: Dict[str, List[str]], ood_patterns: List[str] = None):
         self.domain_keywords = domain_keywords
+        self.ood_compiled = [re.compile(p, re.IGNORECASE) for p in (ood_patterns or [])]
         self.support_patterns = {
             domain: [re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE) for kw in kws]
             for domain, kws in domain_keywords.items()
@@ -48,7 +35,7 @@ class LexicalGate:
     def check(self, query: str) -> Tuple[str, List[str]]:
         """Returns ('pass'|'reject', matched_ood_patterns)."""
         matched = []
-        for pat in OOD_COMPILED:
+        for pat in self.ood_compiled:
             m = pat.search(query)
             if m:
                 matched.append(m.group(0).lower())
@@ -74,12 +61,12 @@ class LexicalGate:
 class DomainRouter:
     """Routes a query using multi-signal voting (centroid, keywords, aliases)."""
 
-    def __init__(self, centroids: Dict[str, dict], domain_keywords: Dict[str, List[str]]):
+    def __init__(self, centroids: Dict[str, dict], domain_keywords: Dict[str, List[str]], ood_patterns: List[str] = None):
         self.domain_keywords = domain_keywords
         self.domains: List[str] = []
-        self.centroid_matrix: Optional[np.ndarray] = None
+        self.centroid_matrix = None
         self._build_matrix(centroids)
-        self.lexical_gate = LexicalGate(domain_keywords)
+        self.lexical_gate = LexicalGate(domain_keywords, ood_patterns=ood_patterns)
         
         # Weights for multi-signal voting
         self.w_centroid = 0.40
@@ -234,10 +221,11 @@ from collections import defaultdict
 def load_router(
     centroids_path: str,
     keywords_path: str,
+    ood_patterns: List[str] = None,
 ) -> DomainRouter:
     """Load DomainRouter from saved centroid and keyword files."""
     with open(centroids_path, "r") as f:
         centroids = json.load(f)
     with open(keywords_path, "r") as f:
         domain_keywords = json.load(f)
-    return DomainRouter(centroids, domain_keywords)
+    return DomainRouter(centroids, domain_keywords, ood_patterns=ood_patterns)

@@ -21,55 +21,9 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Vague / generic query detector
-# These are rule-baseline/safety heuristics and are documented as such.
+# Safety & Intent Guardrails
+# These are production-grade heuristics loaded from config for auditability.
 # ---------------------------------------------------------------------------
-_VAGUE_PATTERN = re.compile(
-    r"^\s*("
-    r"why am i here|what is this|help me|what should i do|tell me something"
-    r"|explain this|who are you|are you real|what do you do|what can you do"
-    r"|what is your purpose|i don.t know|idk|huh|ok|okay|thanks|thank you"
-    r"|hi+|hey+|hello+|yes|no|sure|maybe|alright|got it|i see"
-    r")\s*[.?!]*\s*$",
-    re.IGNORECASE,
-)
-
-
-def is_vague_query(query: str) -> bool:
-    """Return True if query has no clear support-domain intent."""
-    q = query.strip()
-
-    if _VAGUE_PATTERN.match(q):
-        return True
-
-    tokens = [t for t in q.lower().split() if len(t) > 2]
-    if len(tokens) <= 2 and len(q) < 30:
-        return True
-
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Personal / action request detector
-# These are rule-baseline/safety heuristics and are documented as such.
-# ---------------------------------------------------------------------------
-_PERSONAL_ACTION_PATTERNS = [
-    r"\b(check|view|see|status of|track|where is)\b.*\b(my|mine|i have)\b.*\b(status|application|case|claim|payment|benefit|account|order|file|form)\b",
-    r"\b(update|change|reset|edit|modify)\b.*\b(my|mine)\b.*\b(info|information|address|phone|email|bank|direct deposit|account)\b",
-    r"\b(submit|send|file|upload)\b.*\b(my|the)\b.*\b(form|document|file|application)\b.*\b(for me|on my behalf)\b",
-    r"\b(guarantee|promise|assure)\b.*\b(approval|acceptance|eligibility|success)\b",
-    r"\b(my|exact|specific)\b.*\b(amount|payment|benefit|check|balance)\b",
-    r"\b(why|reason)\b.*\b(my|mine|i haven't)\b.*\b(delayed|late|not received|not arrived|missing)\b",
-    r"\b(decide|decision|judge|approve)\b.*\b(my|this)\b.*\b(case|claim|application|request)\b",
-    r"\b(private|personal|your|my)\b.*\b(phone|number|cell|mobile|address|email)\b",
-]
-
-_PERSONAL_ACTION_REGEX = re.compile("|".join(_PERSONAL_ACTION_PATTERNS), re.IGNORECASE)
-
-
-def is_personal_or_action_request(query: str) -> bool:
-    """Detect whether the query asks for private/account-specific action."""
-    return bool(_PERSONAL_ACTION_REGEX.search(query or ""))
 
 
 # ---------------------------------------------------------------------------
@@ -95,22 +49,18 @@ def infer_passage_domain(p: dict) -> str:
     return "unknown"
 
 
-def has_wrong_intent(query: str, p: dict) -> bool:
-    """Block passages that match the broad domain but answer a different intent."""
+def apply_semantic_intent_filters(query: str, p: dict, conflicting_pairs: List[list] = None) -> bool:
+    """Filter passages using generalized semantic intent conflict detection."""
+    if not conflicting_pairs:
+        return False
+        
     q = (query or "").lower()
     text = ((p.get("doc_id") or "") + " " + (p.get("text") or "")).lower()
 
-    asks_driver_license = (
-        "driver license" in q
-        or "driver's license" in q
-        or ("driver" in q and "license" in q)
-    )
-
-    if asks_driver_license and "non-driver" in text:
-        return True
-
-    if "license" in q and "id card" in text and "driver" not in text:
-        return True
+    for trigger, target, penalty_val in conflicting_pairs:
+        if trigger in q and target in text:
+            # We don't just 'penalize' here, we block if it's a clear semantic mismatch
+            return True
 
     return False
 
@@ -147,7 +97,10 @@ def filter_grounded_evidence(
         )
 
         wrong_domain = bool(selected) and p_domain != "unknown" and p_domain not in selected
-        wrong_intent = has_wrong_intent(query, p)
+        
+        # Semantic intent filtering uses parameterized conflicting pairs
+        conflicting_pairs = getattr(self, "conflicting_pairs", [])
+        wrong_intent = apply_semantic_intent_filters(query, p, conflicting_pairs)
 
         p["citation_domain"] = p_domain
         p["citation_overlap"] = overlap
@@ -157,7 +110,7 @@ def filter_grounded_evidence(
         if wrong_domain or wrong_intent:
             continue
 
-        if overlap >= min_overlap or p.get("score", 0.0) >= 0.80: # Literal 0.80 left as safety backstop
+        if overlap >= min_overlap or p.get("score", 0.0) >= 0.80:
             kept.append(p)
 
     return kept
@@ -229,8 +182,7 @@ def validate_answerability(
         f"Score: {best_p.get('score', 0.0):.4f}, "
         f"DomainMatch: {domain_match}"
     )
-
-    wrong_intent = has_wrong_intent(query, best_p)
+    wrong_intent = apply_semantic_intent_filters(query, best_p, conflicting_pairs)
 
     score = best_p.get("score", 0.0)
     strong_overlap = overlap >= 2
@@ -302,6 +254,20 @@ class ToolExecutor:
         self.chunk_by_id = chunk_by_id or {}
         self.cfg = cfg
 
+        # Add methods to class to access regexes
+        def is_vague_query(q):
+            if not self.vague_regex: return False
+            q = q.strip()
+            if self.vague_regex.match(q): return True
+            tokens = [t for t in q.lower().split() if len(t) > 2]
+            return len(tokens) <= 2 and len(q) < 30
+        self.is_vague_query = is_vague_query
+
+        def is_personal_or_action_request(q):
+            if not self.account_regex: return False
+            return bool(self.account_regex.search(q or ""))
+        self.is_personal_or_action_request = is_personal_or_action_request
+
         self.generator_mode = "llm" if generator is not None else "template"
 
         self.top_k_retrieval = getattr(cfg, "top_k_retrieval", 10)
@@ -341,6 +307,18 @@ class ToolExecutor:
         self.min_citation_overlap = getattr(cfg, "min_citation_overlap", 2)
         self.strong_answer_score_threshold = getattr(cfg, "strong_answer_score_threshold", 0.55)
         self.borderline_answer_score_threshold = getattr(cfg, "borderline_answer_score_threshold", 0.45)
+
+        # Safety & Semantic Gate Initialization
+        safety_cfg = getattr(cfg, "safety_gate", {})
+        vague_patterns = safety_cfg.get("vague_patterns", [])
+        self.vague_regex = re.compile("|".join(vague_patterns), re.IGNORECASE) if vague_patterns else None
+        
+        account_cfg = getattr(cfg, "account_action", {})
+        account_patterns = account_cfg.get("patterns", [])
+        self.account_regex = re.compile("|".join(account_patterns), re.IGNORECASE) if account_patterns else None
+        
+        intent_cfg = getattr(cfg, "semantic_intent_filters", {})
+        self.conflicting_pairs = intent_cfg.get("conflicting_pairs", [])
 
     def run(self, query: str, history: str = "") -> dict:
         """Execute cluster-gated pipeline and return structured result."""
@@ -400,7 +378,7 @@ class ToolExecutor:
             domain_relevant = False
 
         elif top_sim < self.tau_soft_domain and kw_count == 0:
-            if is_vague_query(query):
+            if self.is_vague_query(query):
                 decision = "REJECT"
                 gating_status = "vague_out_of_domain"
                 domain_relevant = False
@@ -606,7 +584,7 @@ class ToolExecutor:
             bool(final_evidence)
             and best_evidence_score >= self.evidence_answer_threshold
         )
-        personal_action = is_personal_or_action_request(query)
+        personal_action = self.is_personal_or_action_request(query)
 
         if not domain_relevant:
             decision = "REJECT"
