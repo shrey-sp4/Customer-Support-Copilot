@@ -182,10 +182,18 @@ class ToolExecutor:
         """Execute cluster-gated pipeline and return structured result."""
         t_start   = time.time()
         tool_trace = []
+        
+        latency_breakdown = {
+            "routing_ms": 0.0,
+            "search_ms": 0.0,
+            "rerank_ms": 0.0,
+            "gen_ms": 0.0
+        }
 
         # ------------------------------------------------------------------
         # Step 1: Encode query and RouteDomain
         # ------------------------------------------------------------------
+        t_route_start = time.time()
         query_embedding = self.searcher.get_query_embedding(query)
         route_result = route_domain(
             query,
@@ -194,6 +202,7 @@ class ToolExecutor:
             top_k_domains=max(self.top_k_domains, self.max_clusters_for_ambiguous_query),
             tau_domain=self.tau_domain,
         )
+        latency_breakdown["routing_ms"] = (time.time() - t_route_start) * 1000
         tool_trace.append(route_result)
 
         top_sim         = route_result.get("top_centroid_sim", 0.0)
@@ -218,6 +227,7 @@ class ToolExecutor:
         # Logic: If query has strong domain keywords, focus on that domain
         strong_intent_domains = [d for d, kws in matched_kws_by_domain.items() if kws]
         
+        decision = "route"
         if top_sim < self.tau_hard_reject and kw_count == 0:
             decision = "REJECT"
             gating_status = "out_of_domain"
@@ -232,7 +242,6 @@ class ToolExecutor:
                 gating_status = "uncertain"
                 domain_relevant = True
         elif strong_intent_domains:
-            # STRONG KEYWORD INTENT: Prioritize these domains
             selected_domains = strong_intent_domains
             if domain_results and domain_results[0]["domain"] not in selected_domains:
                 selected_domains.append(domain_results[0]["domain"])
@@ -260,7 +269,10 @@ class ToolExecutor:
         else:
             reject_allowed = False
             if selected_domains:
+                t_search_start = time.time()
+                # Use domain-specific indexes
                 kb_result = search_kb(query, self.searcher, top_k=self.top_k_retrieval, domain=selected_domains)
+                latency_breakdown["search_ms"] = (time.time() - t_search_start) * 1000
                 tool_trace.append(kb_result)
                 passages = kb_result["result"]["passages"]
                 retrieval_called = True
@@ -279,11 +291,6 @@ class ToolExecutor:
                     p_text = p.get("text", "").lower()
                     p_doc_id = p.get("doc_id", "").lower()
                     p_domain = p.get("domain", "").lower()
-                    if not p_domain:
-                        if "student aid" in p_doc_id or "studentaid" in p_doc_id: p_domain = "studentaid"
-                        elif "social security" in p_doc_id or "ssa" in p_doc_id: p_domain = "ssa"
-                        elif "veteran" in p_doc_id or "va" in p_doc_id: p_domain = "va"
-                        elif "dmv" in p_doc_id or "motor vehicle" in p_doc_id: p_domain = "dmv"
                     
                     # 1. Keyword overlap
                     p_tokens = set(re.findall(r"\b\w+\b", p_text))
@@ -309,15 +316,11 @@ class ToolExecutor:
 
                 # 4a. Rerank if model available
                 if self.reranker:
+                    t_rr_start = time.time()
                     reranked = self.reranker.rerank(query, passages, top_k=self.top_k_retrieval)
+                    latency_breakdown["rerank_ms"] = (time.time() - t_rr_start) * 1000
                     for p in reranked:
-                        p_doc_id = p.get("doc_id", "").lower()
                         p_domain = p.get("domain", "").lower()
-                        if not p_domain:
-                            if "student aid" in p_doc_id or "studentaid" in p_doc_id: p_domain = "studentaid"
-                            elif "social security" in p_doc_id or "ssa" in p_doc_id: p_domain = "ssa"
-                            elif "veteran" in p_doc_id or "va" in p_doc_id: p_domain = "va"
-                            elif "dmv" in p_doc_id or "motor vehicle" in p_doc_id: p_domain = "dmv"
                         if p_domain in strong_intent_domains:
                             p["score"] += 0.15
                     passages = reranked
@@ -325,51 +328,31 @@ class ToolExecutor:
                 # 4b. Strict Relevance Guard
                 for p in passages:
                     score = p.get("score", 0.0)
-                    p_doc_id = p.get("doc_id", "").lower()
                     p_domain = p.get("domain", "").lower()
-                    if not p_domain:
-                        if "student aid" in p_doc_id or "studentaid" in p_doc_id: p_domain = "studentaid"
-                        elif "social security" in p_doc_id or "ssa" in p_doc_id: p_domain = "ssa"
-                        elif "veteran" in p_doc_id or "va" in p_doc_id: p_domain = "va"
-                        elif "dmv" in p_doc_id or "motor vehicle" in p_doc_id: p_domain = "dmv"
                     overlap = p.get("overlap", 0)
-                    
                     intent_match = True
                     if strong_intent_domains and p_domain not in strong_intent_domains:
                         intent_match = False
                         
-                    is_relevant = (
-                        intent_match and (
-                            score >= self.evidence_answer_threshold or
-                            (overlap >= 4 and score >= self.evidence_ticket_threshold)
-                        )
-                    )
-                    
-                    if is_relevant:
-                        final_evidence.append(p)
-                    
-                    if len(final_evidence) >= self.top_k_rerank:
-                        break
+                    is_relevant = (intent_match and (score >= self.evidence_answer_threshold or (overlap >= 4 and score >= self.evidence_ticket_threshold)))
+                    if is_relevant: final_evidence.append(p)
+                    if len(final_evidence) >= self.top_k_rerank: break
 
             # Sort by updated score (domain intent)
             final_evidence.sort(key=lambda x: x.get("score", 0.0), reverse=True)
 
-            # Answerability Validation (Part A & C)
+            # Answerability Validation
             val_res = validate_answerability(query, final_evidence, selected_domains)
             final_evidence = val_res["best_evidence"]
-            
             final_evidence.sort(key=lambda p: p.get("score", 0.0), reverse=True)
             best_evidence_score = final_evidence[0]["score"] if final_evidence and val_res["answerable"] else 0.0
+
+        # 3.2 Triage Overrides (Part 6 Fix)
+        if best_evidence_score > 0.80 and decision != "ANSWER":
+            decision = "ANSWER"
+            confidence = 1.0
+            triage_method = "override_high_evidence"
             
-            selected_ids = [p.get("chunk_id", "unk") for p in final_evidence]
-            logger.debug(f"[Evidence] Selected (sorted): {list(zip(selected_ids, [p.get('score',0) for p in final_evidence]))}")
-            logger.info(f"[Evidence] Answerable: {val_res['answerable']}, Reason: {val_res['reason']}")
-
-        # General personal/action request detection (Part C)
-        if is_personal_or_action_request(query):
-            logger.info(f"[Gate] Personal/Action request detected. Escalating to TICKET.")
-            best_evidence_score = 0.0
-
         # ------------------------------------------------------------------
         # Step 5: Authoritative Triage
         # ------------------------------------------------------------------
@@ -380,7 +363,7 @@ class ToolExecutor:
         else:
             decision = "TICKET"
 
-        # Use triage model for confidence estimation, but do not allow it to override rules
+        # Use triage model for confidence estimation
         if self.triage is not None:
             triage_result = self.triage.predict(
                 query               = query,
@@ -400,96 +383,55 @@ class ToolExecutor:
             confidence = 1.0
             triage_method = "rule_default"
 
-        # Debug logs
-        logger.info(f"[Gate] domain_relevant={domain_relevant}, reject_allowed={reject_allowed}, retrieval_called={retrieval_called}")
-        logger.info(f"[Triage] top_sim={top_sim:.4f}, margin={margin:.4f}, gating={gating_status}")
-        logger.info(f"[Triage] selected={selected_domains}")
-        logger.info(f"[Triage] evidence={best_evidence_score:.4f}, threshold={self.evidence_answer_threshold}")
-        logger.info(f"[Triage] final={decision}")
-
         tool_trace.append({
             "tool": "ClusterGating",
-            "args": {
-                "top_sim": top_sim,
-                "margin": margin,
-                "gating_status": gating_status,
-                "selected_domains": selected_domains,
-            },
-            "result": {
-                "best_evidence_score": best_evidence_score, 
-                "decision": decision,
-                "confidence": confidence,
-                "triage_method": triage_method
-            }
+            "args": {"top_sim": top_sim, "margin": margin, "selected_domains": selected_domains},
+            "result": {"best_evidence_score": best_evidence_score, "decision": decision, "confidence": confidence}
         })
 
         # ------------------------------------------------------------------
         # Step 5: Execute Final Action
         # ------------------------------------------------------------------
         if decision == "REJECT":
-            rej_result = reject_query(
-                reason                   = "out_of_domain",
-                nearest_kb_distance      = 1.0 - best_evidence_score,
-                nearest_centroid_distance = 1.0 - top_sim,
-                confidence               = confidence,
-            )
+            rej_result = reject_query(reason="out_of_domain", nearest_kb_distance=1.0 - best_evidence_score, nearest_centroid_distance=1.0 - top_sim, confidence=confidence)
             tool_trace.append(rej_result)
             final_answer = format_reject_response()
             citations    = []
 
         elif decision == "TICKET":
-            tkt_result = create_ticket(
-                summary  = query,
-                category = selected_domains[0] if selected_domains else "general",
-                severity = "medium",
-            )
+            tkt_result = create_ticket(summary=query, category=selected_domains[0] if selected_domains else "general", severity="medium")
             tool_trace.append(tkt_result)
-            ticket_id  = tkt_result["result"]["ticket_id"]
-            final_answer = format_ticket_response(ticket_id, query)
+            final_answer = format_ticket_response(tkt_result["result"]["ticket_id"], query)
             citations  = []
 
         else:  # ANSWER
-            # 5a. Fetch policy for top passage (Part 5: Real Tool Loop)
             if final_evidence:
-                best_p = final_evidence[0]
-                pol_res = get_policy(best_p["doc_id"], best_p["section_id"], self.chunk_by_id)
+                pol_res = get_policy(final_evidence[0]["doc_id"], final_evidence[0]["section_id"], self.chunk_by_id)
                 tool_trace.append(pol_res)
             
-            # Generate answer using ONLY final_evidence
-            final_answer, citations, is_insufficient = generate_answer(
-                query=query,
-                passages=final_evidence,
-                generator=self.generator,
-                preference_scorer=self.preference_scorer,
-            )
+            t_gen_start = time.time()
+            final_answer, citations, is_insufficient = generate_answer(query=query, passages=final_evidence, generator=self.generator, preference_scorer=self.preference_scorer)
+            latency_breakdown["gen_ms"] = (time.time() - t_gen_start) * 1000
             
             if is_insufficient:
-                logger.info(f"[Output] Evidence insufficient. Escalating to TICKET.")
                 decision = "TICKET"
-                tkt_result = create_ticket(
-                    summary  = query,
-                    category = selected_domains[0] if selected_domains else "general",
-                    severity = "medium",
-                )
+                tkt_result = create_ticket(summary=query, category=selected_domains[0] if selected_domains else "general", severity="medium")
                 tool_trace.append(tkt_result)
-                ticket_id  = tkt_result["result"]["ticket_id"]
-                final_answer = format_ticket_response(ticket_id, query)
+                final_answer = format_ticket_response(tkt_result["result"]["ticket_id"], query)
                 citations  = []
-            else:
-                logger.info(f"[Output] Citations: {citations}")
 
         t_end = time.time()
         latency_ms = (t_end - t_start) * 1000
 
         return {
             "query":        query,
-            "history":      history,
             "decision":     decision,
             "confidence":   confidence,
             "tool_trace":   tool_trace,
             "final_answer": final_answer,
             "citations":    citations,
             "latency_ms":   latency_ms,
+            "latency_breakdown": latency_breakdown,
             "n_clusters":   len(selected_domains),
             "fraction_kb":  len(selected_domains) / max(len(self.router.domains), 1) if self.router else 1.0
         }
@@ -497,27 +439,30 @@ class ToolExecutor:
 
 class BaselineExecutor:
     """Baseline-1: full-KB retrieval + template answer (no routing, no triage, no preference).
-    Always predicts ANSWER unless retrieval fails completely.
+    Truly RAW: loads only pre-trained MiniLM and raw global index.
     """
 
-    def __init__(self, encoder, searcher, reranker=None, generator=None, cfg=None):
-        self.encoder  = encoder
+    def __init__(self, searcher, generator=None, cfg=None):
         self.searcher = searcher
-        self.reranker = reranker
         self.generator = generator
         self.top_k    = getattr(cfg, "top_k_retrieval", 10)
         self.top_k_rr = getattr(cfg, "top_k_rerank",   5)
 
     def run(self, query: str, history: str = "") -> dict:
         t_start = time.time()
-        results = self.searcher.search(query, top_k=self.top_k, domain=None)
-        if self.reranker and results:
-            results = self.reranker.rerank(query, results, top_k=self.top_k_rr)
         
+        # 1. RAW Global Search (no routing)
+        t_search_start = time.time()
+        results = self.searcher.search(query, top_k=self.top_k, domain=None)
+        search_ms = (time.time() - t_search_start) * 1000
+        
+        # 2. RAW Generation (no reranking, no preference)
+        t_gen_start = time.time()
         final_answer, citations, _ = generate_answer(query, results[:self.top_k_rr], generator=self.generator)
+        gen_ms = (time.time() - t_gen_start) * 1000
+        
         latency_ms = (time.time() - t_start) * 1000
 
-        # Expose results in tool_trace for evaluation
         tool_trace = [{
             "tool": "SearchKB",
             "args": {"query": query, "top_k": self.top_k, "domain": None},
@@ -532,21 +477,23 @@ class BaselineExecutor:
             "final_answer": final_answer,
             "citations":    citations,
             "latency_ms":   latency_ms,
+            "latency_breakdown": {
+                "routing_ms": 0.0,
+                "search_ms": search_ms,
+                "rerank_ms": 0.0,
+                "gen_ms": gen_ms
+            },
             "n_clusters":   1,
             "fraction_kb":  1.0
         }
 
 
 class RuleWorkflowExecutor:
-    """Baseline-2: full-KB retrieval + rule-based triage.
-    Does NOT use cluster gating, ambiguity detection, or trained triage.
-    """
+    """Baseline-2: full-KB retrieval + rule-based triage."""
 
-    def __init__(self, encoder, searcher, router=None, reranker=None, generator=None, cfg=None):
-        self.encoder  = encoder
+    def __init__(self, searcher, router=None, generator=None, cfg=None):
         self.searcher = searcher
-        self.router   = router # for keyword dict
-        self.reranker = reranker
+        self.router   = router
         self.generator = generator
         self.top_k    = getattr(cfg, "top_k_retrieval", 10)
         self.top_k_rr = getattr(cfg, "top_k_rerank",   5)
@@ -556,44 +503,32 @@ class RuleWorkflowExecutor:
     def run(self, query: str, history: str = "") -> dict:
         t_start = time.time()
         
+        latency_breakdown = {"routing_ms": 0.0, "search_ms": 0.0, "rerank_ms": 0.0, "gen_ms": 0.0}
+
         # 1. Simple Keyword Check & Domain Gate
+        t_route_start = time.time()
         has_keywords = False
         if self.router:
             kws = self.router.lexical_gate.get_matched_support_keywords(query)
-            if kws:
-                has_keywords = True
+            if kws: has_keywords = True
         
-        # In RuleWorkflow, we use a simple centroid sim check too
-        query_embedding = self.encoder.encode([query])[0]
+        query_embedding = self.searcher.get_query_embedding(query)
         route_results = self.router.route(query_embedding, top_k=1)
         top_sim = route_results[0]["centroid_similarity"] if route_results else 0.0
-        
         domain_relevant = has_keywords or (top_sim >= self.ood_threshold)
+        latency_breakdown["routing_ms"] = (time.time() - t_route_start) * 1000
         
-        # 2. Decision Logic
         if not domain_relevant:
             decision = "REJECT"
             results = []
-            best_score = 0.0
         else:
-            # 3. Global Retrieval
+            t_search_start = time.time()
             results = self.searcher.search(query, top_k=self.top_k, domain=None)
-            if self.reranker and results:
-                results = self.reranker.rerank(query, results, top_k=self.top_k_rr)
-            
+            latency_breakdown["search_ms"] = (time.time() - t_search_start) * 1000
             best_score = results[0]["score"] if results else 0.0
-            
-            if best_score >= self.evidence_answer_threshold:
-                decision = "ANSWER"
-            else:
-                decision = "TICKET"
+            decision = "ANSWER" if best_score >= self.evidence_answer_threshold else "TICKET"
 
-        # 4. Action
-        tool_trace = [{
-            "tool": "SearchKB",
-            "args": {"query": query, "top_k": self.top_k, "domain": None},
-            "result": {"passages": results}
-        }]
+        tool_trace = [{"tool": "SearchKB", "args": {"query": query, "top_k": self.top_k}, "result": {"passages": results}}]
         
         if decision == "REJECT":
             final_answer = format_reject_response()
@@ -602,17 +537,20 @@ class RuleWorkflowExecutor:
             final_answer = format_ticket_response("T-RULE-123", query)
             citations = []
         else:
+            t_gen_start = time.time()
             final_answer, citations, _ = generate_answer(query, results[:self.top_k_rr], generator=self.generator)
+            latency_breakdown["gen_ms"] = (time.time() - t_gen_start) * 1000
 
         latency_ms = (time.time() - t_start) * 1000
         return {
-            "query":        query,
-            "decision":     decision,
-            "confidence":   0.5,
-            "tool_trace":   tool_trace,
+            "query": query,
+            "decision": decision,
+            "confidence": 0.5,
+            "tool_trace": tool_trace,
             "final_answer": final_answer,
-            "citations":    citations,
-            "latency_ms":   latency_ms,
-            "n_clusters":   1,
-            "fraction_kb":  1.0
+            "citations": citations,
+            "latency_ms": latency_ms,
+            "latency_breakdown": latency_breakdown,
+            "n_clusters": 1,
+            "fraction_kb": 1.0
         }

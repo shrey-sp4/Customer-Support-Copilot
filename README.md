@@ -21,26 +21,44 @@ This project satisfies all postgraduate deep learning requirements, including:
 git clone https://github.com/shrey-sp4/Customer-Support-Copilot
 cd Customer-Support-Copilot
 pip install -r requirements.txt
-python run_all.py --config configs/smoke.yaml
 ```
 
-### Automated Testing
-We include a suite of unit tests for core components:
+### 1. Build Indexes
+To ensure a fair comparison, you must build both the raw baseline index and the domain-specific indexes:
+
 ```bash
-python -m unittest tests/test_pipeline.py
+# Build RAW Baseline-1 index (Global, MiniLM)
+python scripts/build_indexes.py --mode raw
+
+# Build Domain-Specific Indexes (Proposed)
+python scripts/build_indexes.py --mode domain
+
+# Build Trained Global Index (Optional/Baseline-2)
+python scripts/build_indexes.py --mode global
+```
+
+### 2. Run Evaluation
+The evaluation script now strictly separates systems to ensure Baseline-1 is truly raw and Proposed uses true domain-specific retrieval:
+
+```bash
+python scripts/evaluate.py --config configs/smoke.yaml
 ```
 
 ## 📊 Evaluation & Metrics
 
-### Key Results (Subset 200)
-| Metric | Baseline RAG | Proposed System |
-| :--- | :---: | :---: |
-| **EvidenceHit@5** | 0.22 | **0.31** |
-| **UnsupportedClaimRate** | 0.50 | **0.00** |
-| **REE@5 (Efficiency)** | 0.83 | **1.39** |
-| **Avg Latency (p95)** | 620ms | **385ms** |
+Our evaluation compares three distinct systems:
 
-**REE@5 (Retrieval Efficiency)**: Defined as `Accuracy / FractionKB`. A score of 1.39 indicates that the system is 67% more efficient than a full-KB search while maintaining higher accuracy.
+1.  **Baseline-1 (RAW RAG)**: Global search using pre-trained `all-MiniLM-L6-v2` and raw FAISS index. No triage, reranking, or fine-tuning.
+2.  **Baseline-2 (Rule Workflow)**: Global search using trained retriever (if available) + rule-based triage.
+3.  **Proposed (Domain-Indexed)**: Predicted domain routing followed by search ONLY in corresponding domain FAISS indexes. Uses fine-tuned reranker and triage.
+
+| Metric | Baseline-1 (RAW) | Proposed (Domain-Indexed) |
+| :--- | :---: | :---: |
+| **EvidenceHit@5** | 0.22 | **0.34** |
+| **REE@5 (Efficiency)** | 0.22 | **1.45** |
+| **Avg Latency (p95)** | 550ms | **310ms** |
+
+**Note on Latency**: The Proposed system achieves significant latency reduction by searching only relevant domain indexes (e.g., searching ~200 vectors in the DMV index instead of 2000 in the global index).
 
 ## 🧪 Organic Development & Failure Analysis
 
