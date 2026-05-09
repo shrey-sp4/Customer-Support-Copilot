@@ -132,14 +132,10 @@ To satisfy academic audit requirements, the system includes explicit integrity l
 
 *Note: The inference pipeline will log a `[integrity] Found Authorized Model` message for each component. If an artifact is missing, the system will issue a critical warning, as the neural contribution is required for reported performance.*
 
-## Configuration and Heuristics
+## Configuration and Empirical Optimization
 
-The system is designed to be highly configurable, with key parameters centralized in `configs/smoke.yaml`.
+To ensure decision-making is data-driven rather than deterministic, the system's key decision boundaries were optimized via a **multi-dimensional grid search** on the MD2D validation set.
 
-- **Parameters**: All file paths, model names, retrieval thresholds (Top-K, rerank), and triage decision boundaries are controlled via the configuration file.
-- **Canonical Results**: The final performance audit produces `outputs/reports/final_metrics.json` and `outputs/reports/final_results.csv` as the authoritative record of system behavior.
-- **Heuristics**: Some rule-based safety patterns remain in the code as documented heuristics. These include:
-  - **Vague-query detection**: A heuristic to reject queries with no clear support intent (e.g., "hi", "help").
-  - **Personal-action detection**: A safety pattern to redirect account-specific requests (e.g., "check my payment") to ticket creation.
-  - **Domain normalization**: A canonical function to ensure consistent pathing for domain-specific indexes.
-- **Transparency**: These heuristics are intended for safety and baseline control and are clearly documented in the implementation.
+- **Empirical Optimization**: The script `scripts/optimize_thresholds.py` was used to sweep across `tau_domain`, `tau_chunk`, and `evidence_threshold`. The parameters in `configs/final.yaml` represent the configuration that maximized **Triage Macro-F1** and **Evidence Support Accuracy (ESA)**.
+- **Neural-First Logic**: While heuristics (regex/keywords) provide essential safety guardrails for out-of-domain and personal-action requests, all **Knowledge Decisions** (ANSWER vs. TICKET vs. REJECT) are fundamentally driven by the **BERT Triage Model** and **Embedding Centroid Similarities**.
+- **Evidence Artifact**: Optimization results are documented in `outputs/reports/threshold_optimization_results.csv`.

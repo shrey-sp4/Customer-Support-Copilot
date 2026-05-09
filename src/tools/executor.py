@@ -122,6 +122,7 @@ def validate_answerability(
     selected_domains: List[str],
     strong_threshold: float = 0.55,
     borderline_threshold: float = 0.45,
+    conflicting_pairs: List[list] = None,
 ) -> dict:
     """Check if evidence directly addresses the query and is coherent."""
     if not final_evidence:
@@ -540,7 +541,8 @@ class ToolExecutor:
                     final_evidence, 
                     selected_domains,
                     strong_threshold=self.strong_answer_score_threshold,
-                    borderline_threshold=self.borderline_answer_score_threshold
+                    borderline_threshold=self.borderline_answer_score_threshold,
+                    conflicting_pairs=self.conflicting_pairs,
                 )
                 final_evidence = val_res["best_evidence"]
                 final_evidence.sort(key=lambda p: p.get("score", 0.0), reverse=True)

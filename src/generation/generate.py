@@ -434,14 +434,14 @@ def load_generator(model_path: str, device=None, cfg: dict = None) -> Optional[F
     lora_path = cfg.get("generator_lora_path") or "outputs/generator_lora"
     dpo_path = cfg.get("preference_dpo_path") or "outputs/preference_dpo"
     
-    # Select the most 'advanced' adapter found
+    # Select the most 'advanced' adapter found (Only if directory actually exists)
     active_lora = None
-    if os.path.exists(os.path.join(dpo_path, "adapter_config.json")):
+    if dpo_path and os.path.isdir(dpo_path) and os.path.exists(os.path.join(dpo_path, "adapter_config.json")):
         active_lora = dpo_path
-        print(f"[integrity] Found Authorized DPO-Aligned Adapter at {dpo_path}")
-    elif os.path.exists(os.path.join(lora_path, "adapter_config.json")):
+        print(f"[integrity] Found Authorized DPO-Aligned Adapter at {active_lora}")
+    elif lora_path and os.path.isdir(lora_path) and os.path.exists(os.path.join(lora_path, "adapter_config.json")):
         active_lora = lora_path
-        print(f"[integrity] Found Authorized SFT LoRA Adapter at {lora_path}")
+        print(f"[integrity] Found Authorized SFT LoRA Adapter at {active_lora}")
     else:
         print("[integrity] WARNING: No trained generator adapters found. Falling back to base model.")
 
