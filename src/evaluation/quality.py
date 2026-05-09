@@ -116,7 +116,7 @@ def compute_answer_quality_metrics(results: List[dict], encoder=None, cfg: dict 
         # 9. Wrong Domain Citation
         is_wrong_domain = 0
         if citations and gold_domain:
-            if not any(gold_domain in c.lower() for c in citations):
+            if not any(gold_domain in (c.get("doc_id", "") or "").lower() for c in citations):
                 is_wrong_domain = 1
         wrong_domain.append(is_wrong_domain)
         

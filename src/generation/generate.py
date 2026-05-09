@@ -21,19 +21,30 @@ def format_evidence(passages: List[dict]) -> str:
     return "\n".join(parts)
 
 
-def extract_citations(passages: List[dict]) -> List[str]:
-    """Extract formatted citation strings from passages."""
+def extract_citations(passages: List[dict]) -> List[dict]:
+    """Extract structured citation dictionaries from passages."""
     citations = []
+    seen = set()
     for p in passages:
         doc_id = p.get("doc_id", "unknown")
         chunk_id = p.get("chunk_id", "unknown")
         s = p.get("span_start", 0)
         e = p.get("span_end", 0)
-        if s or e:
-            citations.append(f"[{doc_id}:{chunk_id} {s}-{e}]")
-        else:
-            citations.append(f"[{doc_id}:{chunk_id}]")
-    return list(dict.fromkeys(citations)) # dedup
+        
+        cit_obj = {
+            "doc_id": doc_id,
+            "chunk_id": chunk_id,
+            "span_start": s,
+            "span_end": e,
+            "text": p.get("text", "")[:100] + "..."
+        }
+        
+        # Dedup by doc+chunk
+        key = f"{doc_id}:{chunk_id}"
+        if key not in seen:
+            citations.append(cit_obj)
+            seen.add(key)
+    return citations
 
 
 def clean_text_formatting(text: str) -> str:
@@ -118,8 +129,8 @@ def _extract_clean_sentences(text: str, query: str, max_chars: int = 5000) -> st
     return result
 
 
-def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[str], bool]:
-    """Generate a clean, support-style answer with citations from selected evidence."""
+def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[dict], bool]:
+    """Generate a clean, support-style answer with structured citations."""
     if not passages:
         return (
             "I could not find enough evidence in the knowledge base to answer this query. "
@@ -155,7 +166,15 @@ def template_answer(query: str, passages: List[dict]) -> Tuple[str, List[str], b
     if answer and answer[-1] not in ".!?":
         answer += "."
 
-    cit_str = " " + " ".join(citations[:2]) if citations else ""
+    # Format citation strings for appending to text
+    cit_labels = []
+    for c in citations[:2]:
+        if c.get("span_start") or c.get("span_end"):
+            cit_labels.append(f"[{c['doc_id']}:{c['chunk_id']} {c['span_start']}-{c['span_end']}]")
+        else:
+            cit_labels.append(f"[{c['doc_id']}:{c['chunk_id']}]")
+    
+    cit_str = " " + " ".join(cit_labels) if cit_labels else ""
     return answer + cit_str, citations, False
 
 
@@ -178,7 +197,7 @@ def verify_grounding(answer: str, passages: List[dict]) -> Tuple[bool, str]:
     return True, "Verified"
 
 
-def validate_answer_quality(answer: str, query: str, citations: List[str]) -> bool:
+def validate_answer_quality(answer: str, query: str, citations: List[dict]) -> bool:
     """Perform quality gate checks on the generated answer."""
     if not answer or len(answer.strip()) < 15:
         logger.warning(f"[Quality] Rejected: Too short ({len(answer.strip())} chars)")
@@ -206,7 +225,7 @@ def generate_answer(
     generator=None,
     preference_scorer=None,
     num_candidates: int = 3,
-) -> Tuple[str, List[str], bool]:
+) -> Tuple[str, List[dict], bool, dict]:
     """
     Generate final cited answer.
     Returns (answer, citations, is_insufficient, metadata).
@@ -290,8 +309,11 @@ def generate_answer(
         best += "."
 
     # Programmatically append the primary citation if not already mentioned
-    if citations and not any(c in best for c in citations):
-        best = best.rstrip() + f" {citations[0]}"
+    if citations:
+        c = citations[0]
+        c_label = f"[{c['doc_id']}:{c['chunk_id']}]"
+        if c_label not in best:
+            best = best.rstrip() + f" {c_label}"
 
     print(f"[NeuralGen] SUCCESS: Learned generation verified and cited.")
     return best, citations, False, {"source": "peft_dpo_neural", "neural": True}

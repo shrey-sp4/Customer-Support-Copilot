@@ -62,7 +62,7 @@ def get_metrics(results: List[Dict], eval_set: List[Dict], system_name: str):
         # Citation precision
         citations = res.get("citations", [])
         if citations:
-            p_prec = sum(1 for c in citations if any(d in c for d in gold_docs)) / len(citations)
+            p_prec = sum(1 for c in citations if any(d == c.get("doc_id") for d in gold_docs)) / len(citations)
             precisions.append(p_prec)
         else:
             precisions.append(0.0)
