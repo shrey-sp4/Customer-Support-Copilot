@@ -316,8 +316,17 @@ class FlanT5Generator:
 
         print(f"[generator] Loading {model_path} ...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model     = T5ForConditionalGeneration.from_pretrained(model_path)
-        self.model.to(device)
+        try:
+            self.model = T5ForConditionalGeneration.from_pretrained(model_path)
+            self.model.to(device)
+        except Exception as e:
+            if "CUDA" in str(e) or "out of memory" in str(e).lower() or "paging file" in str(e).lower():
+                print(f"[warning] Failed to load generator on {device}. Falling back to CPU...")
+                self.device = torch.device("cpu")
+                self.model = T5ForConditionalGeneration.from_pretrained(model_path)
+                self.model.to(self.device)
+            else:
+                raise e
         self.model.eval()
 
     @torch.no_grad()

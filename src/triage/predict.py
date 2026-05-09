@@ -24,8 +24,17 @@ class TriagePredictor:
 
         logger.info(f"Loading triage model from {model_path}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model     = AutoModelForSequenceClassification.from_pretrained(model_path)
-        self.model.to(device)
+        try:
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+            self.model.to(device)
+        except Exception as e:
+            if "CUDA" in str(e) or "out of memory" in str(e).lower() or "paging file" in str(e).lower():
+                logger.warning(f"Failed to load triage model on {device}. Falling back to CPU...")
+                self.device = torch.device("cpu")
+                self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+                self.model.to(self.device)
+            else:
+                raise e
         self.model.eval()
 
     @torch.no_grad()
