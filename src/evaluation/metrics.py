@@ -65,7 +65,7 @@ def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
     if not eval_results:
         return {}
 
-    r1 = r5 = mrr = ndcg = eh5 = dh5 = 0.0
+    r1 = r3 = r5 = mrr = ndcg = eh1 = eh3 = eh5 = dh5 = 0.0
     n = len(eval_results)
 
     for r in eval_results:
@@ -73,17 +73,23 @@ def compute_retrieval_metrics(eval_results: List[dict], top_k: int = 5) -> dict:
         gold = r.get("gold_chunk_id", "")
 
         r1 += recall_at_k(ids, gold, 1)
+        r3 += recall_at_k(ids, gold, 3)
         r5 += recall_at_k(ids, gold, top_k)
         mrr += mrr_at_k(ids, gold, 10)
         ndcg += ndcg_at_k(ids, gold, 10)
+        eh1 += evidence_hit_at_k(ids, gold, 1)
+        eh3 += evidence_hit_at_k(ids, gold, 3)
         eh5 += evidence_hit_at_k(ids, gold, top_k)
         dh5 += doc_hit_at_k(ids, gold, top_k)
 
     return {
         "Recall@1": r1 / n,
+        "Recall@3": r3 / n,
         "Recall@5": r5 / n,
         "MRR@10": mrr / n,
         "nDCG@10": ndcg / n,
+        "EvidenceHit@1": eh1 / n,
+        "EvidenceHit@3": eh3 / n,
         "EvidenceHit@5": eh5 / n,
         "EvidenceDocHit@5": dh5 / n,
     }

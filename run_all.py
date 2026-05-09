@@ -36,11 +36,17 @@ def main():
     # 5. Train Triage Model
     run_command(f"{sys.executable} scripts/train_triage.py --config {args.config}", "Train Triage Model")
     
-    # 6. Train Preference Ranker
-    run_command(f"{sys.executable} scripts/train_preference.py --config {args.config}", "Train Preference Ranker")
+    # 6. Train Generator (PEFT/QLoRA)
+    run_command(f"{sys.executable} scripts/train_generator_peft.py --config {args.config}", "Train Generator (PEFT/QLoRA)")
     
-    # 7. Evaluate
+    # 7. Train Preference Ranker (DPO)
+    run_command(f"{sys.executable} scripts/train_preference.py --config {args.config}", "Train Preference Ranker (DPO)")
+    
+    # 8. Evaluate End-to-End
     run_command(f"{sys.executable} scripts/evaluate.py --config {args.config}", "Evaluate End-to-End")
+
+    # 9. Generate Canonical Final Report
+    run_command(f"{sys.executable} scripts/run_final_eval.py --config {args.config}", "Generate Final Canonical Report")
 
     print(f"\n{'='*60}")
     print("Full pipeline execution completed successfully!")

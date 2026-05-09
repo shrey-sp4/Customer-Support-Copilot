@@ -145,7 +145,7 @@ def main():
         write_json(rows, os.path.join(rep_dir, "all_metrics.json"))
         
         keys = [
-            "label", "EvidenceHit@5", "CitationDocPrecision", "CitationChunkPrecision",
+            "label", "EvidenceHit@5", "EvidenceHit@3", "Recall@3", "CitationDocPrecision", "CitationChunkPrecision",
             "GroundedAnswerRate", "UnsupportedAnswerRate", "WrongDomainCitationRate",
             "TriageAccuracy", "MacroF1", "WeightedF1", "FalseAcceptRateExplicit",
             "GoldAnswerAnsweredRate", "GoldAnswerTicketRate", "GoldAnswerRejectRate",

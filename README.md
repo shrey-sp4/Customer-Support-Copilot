@@ -42,6 +42,9 @@ The following metrics represent the authoritative "Source of Truth" for this rep
 
 | Metric | Baseline-1 (Raw) | Baseline-2 (Rule) | **Proposed (Neural)** |
 | :--- | :--- | :--- | :--- |
+| **Recall@1** | 0.04 | 0.04 | **0.08 (2x)** |
+| **Recall@3** | 0.08 | 0.08 | **0.11 (+38%)** |
+| **Recall@5** | 0.13 | 0.13 | **0.13** |
 | **ESA (Groundedness)** | 1.00* | 0.35 | **0.55** |
 | **Triage Accuracy** | 0.25 | 0.45 | **0.55** |
 | **Triage Macro F1** | 0.13 | 0.41 | **0.50** |
@@ -120,17 +123,17 @@ Final answers are scored against a weighted rubric:
 
 ## 🔍 Deep Learning Integrity (Authorized Artifacts)
 
-To satisfy academic audit requirements, the system includes explicit integrity logging (`[integrity]`) during the boot sequence to verify that trained components are active.
+To satisfy postgraduate academic audit requirements, the system includes explicit integrity logging (`[integrity]`) and verifiable checkpoints in the `outputs/` directory.
 
-| Component | Training Method | Authorized Checkpoint | Evidence Artifacts |
+| Component | Training Method | Authorized Checkpoint | Key Artifacts |
 | :--- | :--- | :--- | :--- |
-| **Retriever** | Triplet Loss (MiniLM) | `outputs/retriever/` | `model.safetensors`, `config.json` |
-| **Reranker** | Cross-Entropy (BERT) | `outputs/reranker/` | `model.safetensors`, `training_log.json` |
-| **Triage** | Sequence Classif. (BERT) | `outputs/triage/` | `model.safetensors`, `triage_val_metrics.json` |
-| **Generator** | SFT + QLoRA (T5-Large) | `outputs/generator_lora/` | `adapter_config.json`, `training_log.json` |
-| **Alignment** | DPO (Policy-Refined) | `outputs/preference_dpo/` | `adapter_config.json`, `training_log.json` |
+| **Retriever** | Triplet Loss (MiniLM) | `outputs/retriever/` | `config.json`, `model.safetensors` |
+| **Reranker** | Cross-Entropy (BERT) | `outputs/reranker/` | `config.json`, `pytorch_model.bin` |
+| **Triage** | Sequence Classif. (BERT) | `outputs/triage/` | `config.json`, `model.safetensors` |
+| **Generator** | SFT + QLoRA (T5-Large) | `outputs/generator_lora/` | `adapter_config.json`, `adapter_model.bin` |
+| **Alignment** | DPO (Policy-Refined) | `outputs/preference_dpo/` | `adapter_config.json`, `adapter_model.bin` |
 
-*Note: The inference pipeline will log a `[integrity] Found Authorized Model` message for each component. If an artifact is missing, the system will issue a critical warning, as the neural contribution is required for reported performance.*
+*Note: The inference pipeline will log a `[integrity] Found Authorized Model` message for each component upon successful loading of these local artifacts. If any artifact is absent, the system defaults to a baseline model and logs a critical warning.*
 
 ## Configuration and Empirical Optimization
 
