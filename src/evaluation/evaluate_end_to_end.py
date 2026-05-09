@@ -13,6 +13,7 @@ from src.evaluation.metrics import (
     compute_triage_metrics,
     compute_routing_metrics,
     compute_latency_metrics,
+    compute_component_latency_metrics,
     compute_ree_at_k,
     compute_cluster_metrics,
 )
@@ -32,6 +33,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
 
     all_results      = []
     latencies_ms     = []
+    latency_breakdowns = []
     triage_preds     = []
     triage_labels    = []
     triage_logits    = []
@@ -50,6 +52,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
             result = executor.run(query, history)
 
             latencies_ms.append(result.get("latency_ms", 0.0))
+            latency_breakdowns.append(result.get("latency_breakdown", {}))
             triage_preds.append(result.get("decision", "ANSWER"))
             triage_labels.append(gold_triage)
             triage_logits.append(
@@ -111,6 +114,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
         triage_m        = compute_triage_metrics(triage_preds, triage_labels, triage_logits, mu_values=[0.10, 0.15, 0.20])
         routing_m       = compute_routing_metrics(routing_results)
         latency_m       = compute_latency_metrics(latencies_ms)
+        comp_latency_m  = compute_component_latency_metrics(latency_breakdowns)
         cluster_m       = compute_cluster_metrics(cluster_results)
         quality_m       = compute_answer_quality_metrics(all_results)
 
@@ -126,6 +130,7 @@ def run_e2e_eval(executor, eval_set, label: str = "system", max_samples: int = N
             **triage_m,
             **routing_m,
             **latency_m,
+            **comp_latency_m,
             **cluster_m,
             **quality_m,
             "REE@5":    ree,

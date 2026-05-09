@@ -40,3 +40,4 @@ loguru>=0.7.0
 
 # Reproducibility
 einops>=0.7.0
+bitsandbytes>=0.41.0

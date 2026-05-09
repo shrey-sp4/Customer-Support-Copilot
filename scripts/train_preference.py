@@ -8,23 +8,38 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", default="google/flan-t5-base")
+    parser.add_argument("--model_name", default="google/flan-t5-large")
     parser.add_argument("--output_dir", default="outputs/preference_dpo")
     args = parser.parse_args()
 
-    # Load model and tokenizer
+    # Load model and tokenizer with 4-bit quantization
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    # T5 uses a unique padding token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
-    ref_model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
+    from transformers import BitsAndBytesConfig
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16
+    )
+
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.model_name,
+        quantization_config=bnb_config,
+        device_map="auto"
+    )
+    ref_model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.model_name,
+        quantization_config=bnb_config,
+        device_map="auto"
+    )
 
     # LoRA Configuration
     peft_config = LoraConfig(
         task_type=TaskType.SEQ_2_SEQ_LM,
-        r=8,
+        r=16, # Increased rank
         lora_alpha=32,
         target_modules=["q", "v"]
     )
@@ -44,7 +59,7 @@ def main():
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        per_device_train_batch_size=2,
+        per_device_train_batch_size=1,
         num_train_epochs=1,
         learning_rate=5e-5,
         remove_unused_columns=False,

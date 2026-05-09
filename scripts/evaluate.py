@@ -160,7 +160,8 @@ def main():
     rows = [base_m, rule_m, prop_m]
     keys = [
         "label", "EvidenceHit@5", "CitationDocPrecision", "TriageAccuracy", "MacroF1", 
-        "AvgLatencyMs", "AvgClustersSearched", "AvgFractionKBScanned", "REE@5"
+        "AvgLatencyMs", "AvgRouting_ms", "AvgSearch_ms", "AvgRerank_ms", "AvgGen_ms",
+        "AvgClustersSearched", "AvgFractionKBScanned", "REE@5"
     ]
     
     csv_path = os.path.join(rep_dir, "ablation_metrics.csv")
@@ -172,12 +173,13 @@ def main():
         writer.writerows(rows)
     
     logger.info("\n--- Results ---")
-    header = "label      | EvHit@5 | CitDocPrec | TriAcc | MacroF1 | LatMs | FracKB | REE@5"
+    header = "label      | EvHit@5 | TriAcc | MacroF1 | LatMs | Route | Search| Rerank| Gen   | FracKB | REE@5"
     print(header)
     print("-" * len(header))
     for r in rows:
-        print(f"{r.get('label'):<10} | {r.get('EvidenceHit@5',0):.3f} | {r.get('CitationDocPrecision',0):.3f} | "
+        print(f"{r.get('label'):<10} | {r.get('EvidenceHit@5',0):.3f} | "
               f"{r.get('TriageAccuracy',0):.3f} | {r.get('MacroF1',0):.3f} | {r.get('AvgLatencyMs',0):.1f} | "
+              f"{r.get('AvgRouting_ms',0):.1f} | {r.get('AvgSearch_ms',0):.1f} | {r.get('AvgRerank_ms',0):.1f} | {r.get('AvgGen_ms',0):.1f} | "
               f"{r.get('AvgFractionKBScanned',0):.3f} | {r.get('REE@5',0):.3f}")
 
     logger.info("Evaluation complete.")

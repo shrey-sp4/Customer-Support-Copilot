@@ -32,6 +32,13 @@ class KBSearcher:
         # Load global index
         self.index, self.chunk_ids = load_faiss_index(index_dir)
         
+        # Load raw embeddings if available (for 'no-index' baseline)
+        self.raw_embs = None
+        embs_path = os.path.join(index_dir, "kb_embs.npy")
+        if os.path.exists(embs_path):
+            self.raw_embs = np.load(embs_path)
+            logger.info(f"Raw embeddings loaded: {self.raw_embs.shape}")
+
         # Load KB chunks
         kb_chunks = read_jsonl(kb_path)
         self.chunk_by_id = {ch["chunk_id"]: ch for ch in kb_chunks}
@@ -44,8 +51,11 @@ class KBSearcher:
         query: str,
         top_k: int = 10,
         domain: Optional[str | List[str]] = None,
+        use_index: bool = True,
     ) -> List[dict]:
-        """Search KB. If domain(s) provided, searches domain-specific indexes only."""
+        """Search KB. 
+        If use_index=False, performs a raw linear scan on the entire KB (no clusters).
+        """
         q_emb = self.encoder.encode(
             [query],
             convert_to_numpy=True,
@@ -53,10 +63,27 @@ class KBSearcher:
             show_progress_bar=False,
         ).astype(np.float32)
 
-        if domain and self.domain_indexes_dir:
+        if not use_index and self.raw_embs is not None:
+            return self._search_linear_scan(q_emb, top_k)
+        elif domain and self.domain_indexes_dir:
             return self._search_domain_specific(q_emb, query, top_k, domain)
         else:
             return self._search_global(q_emb, top_k, domain)
+
+    def _search_linear_scan(self, q_emb: np.ndarray, top_k: int) -> List[dict]:
+        """Brute-force linear scan across the entire KB (Truly No-Index)."""
+        # Compute dot product (embeddings are normalized, so dot product = cosine similarity)
+        scores = np.dot(self.raw_embs, q_emb.T).flatten()
+        
+        # Get top-k indices
+        indices = np.argsort(scores)[-top_k:][::-1]
+        
+        results = []
+        for idx in indices:
+            chunk = self.chunk_by_id.get(self.chunk_ids[idx])
+            if chunk:
+                results.append(self._format_chunk(chunk, scores[idx]))
+        return results
 
     def _search_global(self, q_emb: np.ndarray, top_k: int, domain_filter: Optional[str | List[str]]) -> List[dict]:
         # Retrieve more than top_k to allow domain filtering if domain_filter is metadata-only

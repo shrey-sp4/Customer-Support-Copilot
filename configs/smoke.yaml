@@ -12,7 +12,7 @@ retriever_epochs: 1
 reranker_epochs: 1
 triage_epochs: 1
 preference_epochs: 1
-generator_epochs: 0
+generator_epochs: 1
 
 # Batch sizes
 batch_size: 8
@@ -49,7 +49,7 @@ max_clusters_for_ambiguous_query: 2
 retriever_model: sentence-transformers/all-MiniLM-L6-v2
 reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
 triage_model: distilbert-base-uncased
-generator_model: google/flan-t5-base
+generator_model: google/flan-t5-large
 
 # Output directories
 output_dir: outputs

@@ -7,26 +7,41 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", default="google/flan-t5-base")
+    parser.add_argument("--model_name", default="google/flan-t5-large")
     parser.add_argument("--output_dir", default="outputs/generator_lora")
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=1) # Reduced for larger model
     args = parser.parse_args()
 
-    # Load model and tokenizer
+    # Load model and tokenizer with 4-bit quantization
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
+    
+    from transformers import BitsAndBytesConfig
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16
+    )
+
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.model_name,
+        quantization_config=bnb_config,
+        device_map="auto"
+    )
 
     # LoRA Configuration
     peft_config = LoraConfig(
         task_type=TaskType.SEQ_2_SEQ_LM,
         inference_mode=False,
-        r=8,
+        r=16, # Increased rank for larger model
         lora_alpha=32,
         lora_dropout=0.1,
         target_modules=["q", "v"]
     )
 
+    from peft import prepare_model_for_kbit_training
+    model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 

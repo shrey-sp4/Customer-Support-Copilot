@@ -54,7 +54,12 @@ def main():
     if not os.path.isdir(model_path):
         model_path = cfg.get("retriever_model", "sentence-transformers/all-MiniLM-L6-v2")
     encoder = SentenceTransformer(model_path, device=str(device))
-    searcher = load_searcher(index_dir, os.path.join(data_dir, "kb_chunks.jsonl"), encoder)
+    searcher = load_searcher(
+        index_dir, 
+        os.path.join(data_dir, "kb_chunks.jsonl"), 
+        encoder,
+        domain_indexes_dir="data/indexes_by_domain"
+    )
     
     router = load_router(
         os.path.join(data_dir, "domain_centroids.json"),

@@ -268,6 +268,24 @@ def compute_latency_metrics(latencies_ms: List[float]) -> dict:
     }
 
 
+def compute_component_latency_metrics(breakdowns: List[Dict[str, float]]) -> dict:
+    """Compute average latency per component from a list of breakdown dicts."""
+    if not breakdowns:
+        return {}
+    
+    components = ["routing_ms", "search_ms", "rerank_ms", "gen_ms"]
+    totals = {c: 0.0 for c in components}
+    n = len(breakdowns)
+    
+    for b in breakdowns:
+        for c in components:
+            totals[c] += b.get(c, 0.0)
+            
+    return {
+        f"Avg{c.capitalize()}": totals[c] / n for c in components
+    }
+
+
 # ---------------------------------------------------------------------------
 # Cluster-gated metrics
 # ---------------------------------------------------------------------------

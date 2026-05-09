@@ -58,8 +58,13 @@ def build_faiss_index(
     faiss.write_index(index, index_path)
     with open(ids_path, "w") as f:
         json.dump(chunk_ids, f)
+    
+    # Save raw embeddings for 'no-index' baseline
+    embs_path = os.path.join(index_dir, "kb_embs.npy")
+    np.save(embs_path, all_embs.astype(np.float32))
 
-    logger.info(f"FAISS index saved: {index_path} ({index.ntotal} vectors)")
+    logger.info(f"FAISS index saved: {index_path}")
+    logger.info(f"Raw embeddings saved: {embs_path}")
     logger.info(f"Chunk ID map saved: {ids_path}")
     return index, chunk_ids
 
@@ -81,6 +86,8 @@ if __name__ == "__main__":
     parser.add_argument("--index_dir",  default="data/indexes")
     parser.add_argument("--model_path", default="outputs/retriever",
                         help="Fine-tuned retriever path or HF model ID")
+    parser.add_argument("--mode",       choices=["global", "raw", "domain"], default="global",
+                        help="Building mode: global (all chunks), raw (all chunks with MiniLM), domain (split by domain)")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_chunks", type=int, default=None)
     parser.add_argument("--device",     default="auto")
@@ -88,11 +95,36 @@ if __name__ == "__main__":
 
     from sentence_transformers import SentenceTransformer
     device = get_device(args.device)
-    if os.path.isdir(args.model_path):
-        encoder = SentenceTransformer(args.model_path, device=str(device))
-        logger.info(f"Loaded fine-tuned retriever from {args.model_path}")
+    
+    # Determine model and target dir based on mode
+    model_name = args.model_path
+    target_dir = args.index_dir
+    
+    if args.mode == "raw":
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        target_dir = "data/indexes_raw"
+        logger.info(f"Building RAW baseline index using {model_name}")
+    elif args.mode == "domain":
+        target_dir = "data/indexes_by_domain"
+        logger.info(f"Building DOMAIN-specific indexes in {target_dir}")
     else:
-        encoder = SentenceTransformer(args.model_path, device=str(device))
+        logger.info(f"Building GLOBAL index in {target_dir} using {model_name}")
 
+    encoder = SentenceTransformer(model_name, device=str(device))
     kb_chunks = read_jsonl(args.kb_path)
-    build_faiss_index(kb_chunks, encoder, args.index_dir, args.batch_size, args.max_chunks)
+    
+    if args.mode == "domain":
+        # Group chunks by domain
+        domain_groups = {}
+        for ch in kb_chunks:
+            dom = ch.get("domain", "unknown")
+            if dom not in domain_groups:
+                domain_groups[dom] = []
+            domain_groups[dom].append(ch)
+            
+        for dom, chunks in domain_groups.items():
+            dom_dir = os.path.join(target_dir, dom)
+            logger.info(f"--- Building index for domain: {dom} ({len(chunks)} chunks) ---")
+            build_faiss_index(chunks, encoder, dom_dir, args.batch_size, args.max_chunks)
+    else:
+        build_faiss_index(kb_chunks, encoder, target_dir, args.batch_size, args.max_chunks)

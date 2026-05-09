@@ -451,9 +451,9 @@ class BaselineExecutor:
     def run(self, query: str, history: str = "") -> dict:
         t_start = time.time()
         
-        # 1. RAW Global Search (no routing)
+        # 1. RAW Global Linear Scan (no indexing, no clusters)
         t_search_start = time.time()
-        results = self.searcher.search(query, top_k=self.top_k, domain=None)
+        results = self.searcher.search(query, top_k=self.top_k, domain=None, use_index=False)
         search_ms = (time.time() - t_search_start) * 1000
         
         # 2. RAW Generation (no reranking, no preference)
@@ -502,31 +502,23 @@ class RuleWorkflowExecutor:
 
     def run(self, query: str, history: str = "") -> dict:
         t_start = time.time()
-        
         latency_breakdown = {"routing_ms": 0.0, "search_ms": 0.0, "rerank_ms": 0.0, "gen_ms": 0.0}
 
-        # 1. Simple Keyword Check & Domain Gate
-        t_route_start = time.time()
-        has_keywords = False
-        if self.router:
-            kws = self.router.lexical_gate.get_matched_support_keywords(query)
-            if kws: has_keywords = True
+        # 1. ALWAYS perform RAW Linear Scan first (no early gating)
+        t_search_start = time.time()
+        results = self.searcher.search(query, top_k=self.top_k, domain=None, use_index=False)
+        latency_breakdown["search_ms"] = (time.time() - t_search_start) * 1000
         
-        query_embedding = self.searcher.get_query_embedding(query)
-        route_results = self.router.route(query_embedding, top_k=1)
-        top_sim = route_results[0]["centroid_similarity"] if route_results else 0.0
-        domain_relevant = has_keywords or (top_sim >= self.ood_threshold)
-        latency_breakdown["routing_ms"] = (time.time() - t_route_start) * 1000
-        
-        if not domain_relevant:
+        best_score = results[0]["score"] if results else 0.0
+
+        # 2. Decide response type AFTER search
+        # Simple thresholds for 3-way triage
+        if best_score < self.ood_threshold:
             decision = "REJECT"
-            results = []
+        elif best_score < self.evidence_answer_threshold:
+            decision = "TICKET"
         else:
-            t_search_start = time.time()
-            results = self.searcher.search(query, top_k=self.top_k, domain=None)
-            latency_breakdown["search_ms"] = (time.time() - t_search_start) * 1000
-            best_score = results[0]["score"] if results else 0.0
-            decision = "ANSWER" if best_score >= self.evidence_answer_threshold else "TICKET"
+            decision = "ANSWER"
 
         tool_trace = [{"tool": "SearchKB", "args": {"query": query, "top_k": self.top_k}, "result": {"passages": results}}]
         
