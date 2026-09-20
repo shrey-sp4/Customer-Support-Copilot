@@ -1,0 +1,9 @@
+﻿torch
+transformers
+sentence-transformers
+peft
+datasets
+scikit-learn
+pandas
+numpy
+jupyter
